@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jira-sciforma-sync"
+version = "0.1.0"
+description = "Sync Jira worklogs into Sciforma timesheets"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+]
+
+[project.scripts]
+jira-sciforma = "jira_sciforma.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

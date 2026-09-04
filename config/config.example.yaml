@@ -1,0 +1,35 @@
+# Copy to config/config.yaml and adjust. Credentials come from the environment:
+#   JIRA_EMAIL, JIRA_API_TOKEN  (and optionally JIRA_BASE_URL)
+
+jira:
+  base_url: https://your-company.atlassian.net
+  # Optional extra JQL, ANDed with the worklog-date window. Narrow this to the
+  # projects that feed Sciforma so the run stays fast.
+  jql_filter: 'project in (PLAT, MOB, DATA)'
+  page_size: 50
+  timeout_seconds: 30
+
+mapping_file: config/mapping.yaml
+
+rounding:
+  # 0 disables rounding entirely; 15 = quarter hours, 6 = tenths of an hour.
+  increment_minutes: 15
+  # Keep each person's daily total identical before and after rounding.
+  preserve_daily_total: true
+
+sink:
+  kind: csv            # 'csv' today; 'sciforma_rest' once the API is available
+  output_dir: out
+  split_per_user: true
+  delimiter: ","
+  date_format: "%Y-%m-%d"
+  # Rename to match your Sciforma import template.
+  columns:
+    resource: Resource
+    date: Date
+    project: ProjectCode
+    task: TaskCode
+    hours: Hours
+    comment: Comment
+
+ledger_path: .state/ledger.sqlite
