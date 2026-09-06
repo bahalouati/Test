@@ -1,0 +1,68 @@
+name: weekly timesheet sync
+
+on:
+  schedule:
+    # 06:00 UTC every Monday: exports the week that just closed.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "First day (YYYY-MM-DD). Leave blank to use last week."
+        required: false
+      until:
+        description: "Last day (YYYY-MM-DD)."
+        required: false
+      dry_run:
+        description: "Report only, write nothing"
+        type: boolean
+        default: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e .
+
+      # The ledger must survive between runs or every run re-exports everything.
+      # Swap this for object storage or a database once the volume justifies it.
+      - name: Restore sync ledger
+        uses: actions/cache@v4
+        with:
+          path: .state
+          key: jira-sciforma-ledger-${{ github.run_id }}
+          restore-keys: jira-sciforma-ledger-
+
+      - name: Run sync
+        env:
+          JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+        run: |
+          args="sync"
+          if [ -n "${{ inputs.since }}" ]; then
+            args="$args --since ${{ inputs.since }} --until ${{ inputs.until }}"
+          else
+            args="$args --last-week"
+          fi
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args="$args --dry-run"
+          fi
+          # A non-zero exit means unmapped worklogs; the files are still valid,
+          # so upload them and let the summary flag the gap.
+          python -m jira_sciforma.cli $args | tee summary.txt || true
+
+      - name: Publish summary
+        if: always()
+        run: cat summary.txt >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload timesheets
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timesheets
+          path: out/
+          if-no-files-found: warn

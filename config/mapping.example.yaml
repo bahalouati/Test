@@ -1,0 +1,42 @@
+# First matching rule wins, so order specific rules above general ones.
+# A rule with no `match:` block is the catch-all.
+#
+# Match criteria (all optional, ANDed together):
+#   project           Jira project key(s)
+#   issue_type        Jira issue type name(s)
+#   label             matches if the issue carries any of these labels
+#   component         matches if the issue is in any of these components
+#   issue_key_matches regular expression against the issue key
+
+rules:
+  - name: platform-support
+    match:
+      project: PLAT
+      label: [support, oncall]
+    project_code: SF-PLATFORM
+    task_code: SUPPORT
+
+  - name: platform-delivery
+    match:
+      project: PLAT
+    project_code: SF-PLATFORM
+    task_code: DELIVERY
+
+  - name: mobile-bugs
+    match:
+      project: MOB
+      issue_type: [Bug, Defect]
+    project_code: SF-MOBILE
+    task_code: DEFECT-FIX
+
+  - name: mobile-features
+    match:
+      project: MOB
+    project_code: SF-MOBILE
+    task_code: BUILD
+
+  # Catch-all. Remove it if you would rather have unmapped time reported loudly
+  # by `sync` (which exits non-zero when anything is unmapped) than absorbed here.
+  - name: fallback-overhead
+    project_code: SF-INTERNAL
+    task_code: OVERHEAD

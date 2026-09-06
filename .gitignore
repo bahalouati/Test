@@ -1,0 +1,8 @@
+out/
+.state/
+config/config.yaml
+config/mapping.yaml
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
