@@ -1,0 +1,29 @@
+name: qt-client
+
+on:
+  push:
+    paths:
+      - "qt-jira-client/**"
+      - ".github/workflows/qt-client.yml"
+  pull_request:
+    paths:
+      - "qt-jira-client/**"
+      - ".github/workflows/qt-client.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools cmake g++
+      - name: Configure
+        run: cmake -S qt-jira-client -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+      # The tests need no display and no network -- the Jira layer is exercised
+      # through parsed payloads, not a server.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
