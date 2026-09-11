@@ -5,6 +5,7 @@
 #include <QDate>
 #include <QList>
 #include <QSet>
+#include <QStringList>
 #include <QString>
 
 // Turning my worklogs into "which days am I short?".
@@ -15,11 +16,22 @@ namespace jira {
 
 // One worklog of mine, resolved against the issue it belongs to. The row shape
 // of the script's "Worklogs" sheet.
+// A fix version like "P221997" -- a capital P followed by digits -- names a
+// specification rather than a release, so it is reported in its own column.
+bool isSpecificationVersion(const QString &version);
+
+// Separates a fix version list into the releases and the specifications.
+// Either output pointer may be null.
+void splitFixVersions(const QStringList &versions,
+                      QStringList *releases,
+                      QStringList *specifications);
+
 struct TimesheetEntry {
     QDate day;
     QString issueKey;
     QString summary;
     QString fixVersions;      // joined with ", "; empty when the issue has none
+    QString specifications;   // the P-numbered fix versions, joined the same way
     QString sprint;
     QString mergeRequestUrl;
     QString testSheetName;
@@ -28,6 +40,7 @@ struct TimesheetEntry {
     double hours = 0.0;
 
     bool hasFixVersion() const { return !fixVersions.isEmpty(); }
+    bool hasSpecifications() const { return !specifications.isEmpty(); }
     bool hasSprint() const { return !sprint.isEmpty(); }
     bool hasMergeRequest() const { return !mergeRequestUrl.isEmpty(); }
     bool hasTestSheet() const { return !testSheetUrl.isEmpty(); }

@@ -55,10 +55,12 @@ private slots:
     void formatsCalendarLine();
     void namesSpreadsheetColumns();
     void writesAReadableWorkbook();
+    void writesCsvWithABomAndTheRightColumns();
     void formatsTrackedTime();
     void runsOneTimerAtATime();
     void dropsTasksNoLongerAssignedToMe();
     void keepsUnassignedTasksThatHoldTime();
+    void recognisesSpecificationFixVersions();
     void holidaysOweNothing();
     void holidaysLeaveTheMonthTotalAlone();
     void persistsHolidaysAcrossLoads();
@@ -707,6 +709,48 @@ void TestJiraCore::writesAReadableWorkbook()
              QStringLiteral("Jira_Worklog_Calendar_2026_09.xlsx"));
 }
 
+void TestJiraCore::writesCsvWithABomAndTheRightColumns()
+{
+    jira::TimesheetEntry entry;
+    entry.day = QDate(2026, 9, 8);
+    entry.issueKey = QStringLiteral("CADIM-101");
+    entry.summary = QStringLiteral("Rotate the \"signing\" certificate");   // a quote to escape
+    entry.hours = 6.0;
+    entry.sprint = QStringLiteral("Sprint 12");
+    entry.fixVersions = QStringLiteral("1.4.0");
+    entry.specifications = QStringLiteral("P221997");
+    entry.mergeRequestUrl = QStringLiteral("https://gitlab.example.com/a/-/merge_requests/8");
+    entry.testSheetName = QStringLiteral("sheet.xlsx");
+    entry.testSheetUrl = QStringLiteral("https://jira.example.com/a/10");
+    entry.comment = QStringLiteral("Cert follow-up");
+
+    const QByteArray csv = jira::buildTimesheetCsv({entry});
+
+    // Without the BOM Excel reads the file as the system code page.
+    QVERIFY(csv.startsWith("\xEF\xBB\xBF"));
+
+    const QStringList lines = QString::fromUtf8(csv.mid(3)).split(QLatin1Char('\n'),
+                                                                 Qt::SkipEmptyParts);
+    QCOMPARE(lines.size(), 2);
+    QCOMPARE(lines.first(),
+             QStringLiteral("Date,Issue,Summary,Hours,Sprint,Fix Version,MR Link,Testsheet,"
+                            "Specifications,Description"));
+
+    // Hours sit straight after the summary, then sprint, then fix version.
+    const QString row = lines.at(1);
+    QVERIFY(row.startsWith(QStringLiteral("\"2026-09-08\",\"CADIM-101\",")));
+    // Hours are unquoted so Excel treats the column as numbers it can sum.
+    QVERIFY2(row.contains(QStringLiteral(",6.0,\"Sprint 12\",\"1.4.0\",")), qPrintable(row));
+    QVERIFY(row.contains(QStringLiteral("\"P221997\"")));
+    // An embedded quote is doubled, not left to break the field.
+    QVERIFY(row.contains(QStringLiteral("Rotate the \"\"signing\"\" certificate")));
+
+    // An empty month is still a valid file with its header.
+    const QByteArray empty = jira::buildTimesheetCsv({});
+    QVERIFY(empty.startsWith("\xEF\xBB\xBF"));
+    QCOMPARE(QString::fromUtf8(empty.mid(3)).count(QLatin1Char('\n')), 1);
+}
+
 void TestJiraCore::formatsTrackedTime()
 {
     QCOMPARE(jira::formatStopwatch(0), QStringLiteral("0:00:00"));
@@ -809,6 +853,43 @@ void TestJiraCore::keepsUnassignedTasksThatHoldTime()
     tracker.remove(QStringLiteral("A-1"));
     QVERIFY(tracker.tasks().isEmpty());
     QVERIFY(tracker.currentIssueKey().isEmpty());
+}
+
+void TestJiraCore::recognisesSpecificationFixVersions()
+{
+    // A P followed by digits is a specification, not a release.
+    QVERIFY(jira::isSpecificationVersion(QStringLiteral("P221997")));
+    QVERIFY(jira::isSpecificationVersion(QStringLiteral("P1")));
+    QVERIFY(jira::isSpecificationVersion(QStringLiteral("  P221997  ")));   // trimmed first
+
+    // Everything that merely starts with a P is not.
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("Platform 2.0")));
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("P")));
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("P221997a")));
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("XP221997")));
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("p221997")));      // lower case is not it
+    QVERIFY(!jira::isSpecificationVersion(QStringLiteral("1.4.0")));
+    QVERIFY(!jira::isSpecificationVersion(QString()));
+
+    QStringList releases;
+    QStringList specifications;
+    jira::splitFixVersions({QStringLiteral("1.4.0"), QStringLiteral("P221997"),
+                            QStringLiteral("Platform 2.0"), QStringLiteral("P8"),
+                            QStringLiteral("  ")},
+                           &releases, &specifications);
+    QCOMPARE(releases, QStringList({QStringLiteral("1.4.0"), QStringLiteral("Platform 2.0")}));
+    QCOMPARE(specifications, QStringList({QStringLiteral("P221997"), QStringLiteral("P8")}));
+
+    // Either side may be ignored by the caller.
+    QStringList onlySpecs;
+    jira::splitFixVersions({QStringLiteral("P1"), QStringLiteral("2.0")}, nullptr, &onlySpecs);
+    QCOMPARE(onlySpecs, QStringList({QStringLiteral("P1")}));
+    jira::splitFixVersions({QStringLiteral("P1")}, nullptr, nullptr);   // must not crash
+
+    jira::TimesheetEntry entry;
+    QVERIFY(!entry.hasSpecifications());
+    entry.specifications = QStringLiteral("P221997");
+    QVERIFY(entry.hasSpecifications());
 }
 
 void TestJiraCore::holidaysOweNothing()

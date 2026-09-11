@@ -37,6 +37,14 @@ message(STATUS "Building against Qt ${Qt${QT_VERSION_MAJOR}_VERSION}")
 
 option(JIRADESK_BUILD_TESTS "Build the unit tests" ON)
 
+# Every source here is UTF-8 without a BOM, which MSVC otherwise reads as the
+# system ANSI code page: an em dash then renders as "a-tilde, euro, quote".
+# /utf-8 sets both the source and the execution character set, and covers the
+# uic-generated headers too.
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # The parsing, URL building and credential handling live in a library so the
 # tests can exercise them without pulling in a window.
 add_library(jiradesk_core STATIC

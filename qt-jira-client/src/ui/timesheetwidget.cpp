@@ -16,7 +16,6 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QTableWidget>
-#include <QTextStream>
 #include <QVBoxLayout>
 
 #include <algorithm>
@@ -51,12 +50,20 @@ QString formatHours(double hours)
     return QLocale().toString(hours, 'f', hours == qRound(hours) ? 0 : 2);
 }
 
-QString csvField(const QString &value)
-{
-    QString escaped = value;
-    escaped.replace(QLatin1Char('"'), QLatin1String("\"\""));
-    return QLatin1Char('"') + escaped + QLatin1Char('"');
-}
+// The work-log table's columns. Kept in step with the <column> list in
+// timesheetwidget.ui -- reorder both together.
+enum Column {
+    DateColumn,
+    IssueColumn,
+    SummaryColumn,
+    HoursColumn,
+    SprintColumn,
+    FixVersionColumn,
+    MergeRequestColumn,
+    TestSheetColumn,
+    SpecificationsColumn,
+    DescriptionColumn
+};
 
 } // namespace
 
@@ -256,7 +263,10 @@ void TimesheetWidget::buildTable()
         return a.issueKey < b.issueKey;
     });
 
-    const QString dash = QStringLiteral("—");
+    // Built from its code point rather than typed into the source, so it cannot
+    // be mangled by a compiler that reads this file as anything but UTF-8.
+    const QString dash(QChar(0x2014));
+
     for (int row = 0; row < sorted.size(); ++row) {
         const TimesheetEntry &entry = sorted.at(row);
         const auto set = [this, row](int column, const QString &text) {
@@ -265,33 +275,36 @@ void TimesheetWidget::buildTable()
             return item;
         };
 
-        set(0, entry.day.toString(Qt::ISODate));
-        set(1, entry.issueKey)->setData(Qt::UserRole, entry.issueKey);
-        set(2, entry.summary);
-        set(3, entry.fixVersions.isEmpty() ? dash : entry.fixVersions);
-        set(4, entry.sprint.isEmpty() ? dash : entry.sprint);
+        set(DateColumn, entry.day.toString(Qt::ISODate));
+        set(IssueColumn, entry.issueKey)->setData(Qt::UserRole, entry.issueKey);
+        set(SummaryColumn, entry.summary);
+        set(HoursColumn, formatHours(entry.hours));
+        set(SprintColumn, entry.sprint.isEmpty() ? dash : entry.sprint);
+        set(FixVersionColumn, entry.fixVersions.isEmpty() ? dash : entry.fixVersions);
 
-        QTableWidgetItem *mr = set(5, entry.hasMergeRequest() ? tr("open") : dash);
+        QTableWidgetItem *mr = set(MergeRequestColumn,
+                                   entry.hasMergeRequest() ? tr("open") : dash);
         if (entry.hasMergeRequest()) {
             mr->setData(Qt::UserRole, entry.mergeRequestUrl);
             mr->setForeground(QColor(QStringLiteral("#0b66c3")));
             mr->setToolTip(entry.mergeRequestUrl);
         }
 
-        QTableWidgetItem *sheet = set(6, entry.hasTestSheet() ? entry.testSheetName : dash);
+        QTableWidgetItem *sheet = set(TestSheetColumn,
+                                      entry.hasTestSheet() ? entry.testSheetName : dash);
         if (entry.hasTestSheet()) {
             sheet->setData(Qt::UserRole, entry.testSheetUrl);
             sheet->setForeground(QColor(QStringLiteral("#0b66c3")));
             sheet->setToolTip(entry.testSheetUrl);
         }
 
-        set(7, formatHours(entry.hours));
-        set(8, entry.comment);
+        set(SpecificationsColumn, entry.hasSpecifications() ? entry.specifications : dash);
+        set(DescriptionColumn, entry.comment);
     }
 
     ui->table->setSortingEnabled(true);
     ui->table->resizeColumnsToContents();
-    ui->table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    ui->table->horizontalHeader()->setSectionResizeMode(SummaryColumn, QHeaderView::Stretch);
 }
 
 void TimesheetWidget::updateSummary()
@@ -394,7 +407,7 @@ void TimesheetWidget::cellActivated(int row, int column)
         QDesktopServices::openUrl(QUrl(text));
         return;
     }
-    if (table == ui->table && column == 1 && !text.isEmpty())
+    if (table == ui->table && column == IssueColumn && !text.isEmpty())
         emit issueActivated(text);
 }
 
@@ -426,24 +439,11 @@ void TimesheetWidget::exportCsv()
         return;
 
     QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         emit errorOccurred(tr("Could not write %1: %2").arg(path, file.errorString()));
         return;
     }
-
-    QTextStream out(&file);
-    out << "Date,Issue,Summary,Fix Version,Sprint,MR Link,Hours,Testsheet,Description\n";
-    for (const TimesheetEntry &entry : std::as_const(m_entries)) {
-        out << csvField(entry.day.toString(Qt::ISODate)) << ','
-            << csvField(entry.issueKey) << ','
-            << csvField(entry.summary) << ','
-            << csvField(entry.fixVersions) << ','
-            << csvField(entry.sprint) << ','
-            << csvField(entry.mergeRequestUrl) << ','
-            << csvField(formatHours(entry.hours)) << ','
-            << csvField(entry.testSheetUrl.isEmpty() ? QString() : entry.testSheetName) << ','
-            << csvField(entry.comment) << '\n';
-    }
+    file.write(jira::buildTimesheetCsv(m_entries));
     file.close();
     emit statusMessage(tr("Exported %1 rows to %2.").arg(m_entries.size()).arg(path));
 }

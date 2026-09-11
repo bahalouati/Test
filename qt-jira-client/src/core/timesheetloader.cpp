@@ -137,7 +137,11 @@ void TimesheetLoader::pumpQueue()
                 entry.day = day;
                 entry.issueKey = pending.issue.key;
                 entry.summary = pending.issue.summary;
-                entry.fixVersions = pending.issue.fixVersions.join(QStringLiteral(", "));
+                QStringList releases;
+                QStringList specifications;
+                splitFixVersions(pending.issue.fixVersions, &releases, &specifications);
+                entry.fixVersions = releases.join(QStringLiteral(", "));
+                entry.specifications = specifications.join(QStringLiteral(", "));
                 entry.sprint = pending.issue.sprint;
                 entry.mergeRequestUrl = pending.mergeRequestUrl;
                 entry.testSheetName = testSheet.filename;

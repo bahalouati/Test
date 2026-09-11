@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
+#include <QRegularExpression>
 #include <QStandardPaths>
 
 #include <algorithm>
@@ -35,6 +36,28 @@ QString formatHours(double hours)
     return text;
 }
 } // namespace
+
+bool isSpecificationVersion(const QString &version)
+{
+    // P221997 -- exactly a P and then digits. "Platform 2.0" must not match.
+    static const QRegularExpression pattern(QStringLiteral("^P\\d+$"));
+    return pattern.match(version.trimmed()).hasMatch();
+}
+
+void splitFixVersions(const QStringList &versions, QStringList *releases, QStringList *specifications)
+{
+    for (const QString &version : versions) {
+        const QString trimmed = version.trimmed();
+        if (trimmed.isEmpty())
+            continue;
+        if (isSpecificationVersion(trimmed)) {
+            if (specifications)
+                specifications->append(trimmed);
+        } else if (releases) {
+            releases->append(trimmed);
+        }
+    }
+}
 
 QString TimesheetEntry::calendarLine() const
 {

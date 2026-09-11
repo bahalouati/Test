@@ -39,9 +39,13 @@ Three screens.
   idea when you are off, and carry through to the Excel export
 - each short day says how much is missing, and the header totals it for the
   month
-- a flat work-log table underneath with **Fix version**, **Sprint**, **Merge
-  request** and **Test sheet** per entry; the merge request and test sheet open
-  in the browser, and double-clicking an issue key jumps to it
+- a flat work-log table underneath: date, issue, summary, **hours**, **sprint**,
+  **fix version**, **merge request**, **test sheet**, **specifications** and the
+  work description. The merge request and test sheet open in the browser, and
+  double-clicking an issue key jumps to it
+- a fix version of the form **P** followed by digits (`P221997`) names a
+  specification rather than a release, so it is reported in its own column and
+  kept out of the fix version one
 - **Export Excel** writes the two-sheet workbook — a flat `Worklogs` sheet with
   working hyperlinks, and the colour-banded `Calendar` sheet — or **Export CSV**
   for the rows alone
@@ -190,7 +194,7 @@ jiradesk --help
 ctest --test-dir build --output-on-failure
 ```
 
-60 cases over the parts that are painful to debug against a live server: base
+62 cases over the parts that are painful to debug against a live server: base
 URL normalisation and context paths, REST endpoint construction, both
 authorization headers, Jira's `+0000` timestamp format in both directions,
 duration parsing, the shape of every payload the client reads (including issues
@@ -206,6 +210,10 @@ a time, and the rules for dropping a task that is no longer yours.
 Holidays too: that a marked day owes nothing however empty it is, that marking
 one changes the month total by exactly what that day owed, that a holiday on a
 weekend is not counted as time off, and that the marks survive a reload.
+
+Also the P-numbered fix versions, and the CSV: that it carries a UTF-8 byte
+order mark, puts the columns in the documented order, leaves the hours
+unquoted, and doubles an embedded quote instead of breaking the field.
 
 No network and no credentials — nothing here talks to a Jira.
 
@@ -276,6 +284,18 @@ remote links need a call per issue, and at most six are ever in flight.
 
 Search is a POST rather than a GET because JQL routinely outgrows what a proxy
 will accept in a query string.
+
+## Text encoding
+
+Every source file is UTF-8 without a byte order mark, which MSVC otherwise
+reads as the system ANSI code page — an em dash then renders as `â€"`. The
+build passes `/utf-8` on MSVC, which fixes the sources and the uic-generated
+headers alike. The "nothing here" placeholders are additionally built from
+their code point rather than typed in, so they survive even a build that misses
+the flag.
+
+The CSV export begins with a UTF-8 BOM for the same reason: without it Excel
+reads the file as the system code page.
 
 ## Known limits
 
