@@ -18,6 +18,8 @@ xlsx::Style styleFor(DayStatus status)
     switch (status) {
     case DayStatus::Future:
         return xlsx::Style::DayFuture;
+    case DayStatus::Holiday:
+        return xlsx::Style::DayHoliday;
     case DayStatus::Complete:
         return xlsx::Style::DayComplete;
     case DayStatus::Partial:
@@ -151,9 +153,13 @@ bool exportTimesheetWorkbook(const QString &path,
         QString text = QStringLiteral("%1\n%2")
                                .arg(dayNumber)
                                .arg(QObject::tr("Total: %1h").arg(oneDecimal(summary.hours)));
-        const double missing = summary.missingHours(rules);
-        if (missing > 0.0)
-            text += QLatin1Char('\n') + QObject::tr("Missing %1h").arg(oneDecimal(missing));
+        if (summary.isHoliday()) {
+            text += QLatin1Char('\n') + QObject::tr("Holiday");
+        } else {
+            const double missing = summary.missingHours(rules);
+            if (missing > 0.0)
+                text += QLatin1Char('\n') + QObject::tr("Missing %1h").arg(oneDecimal(missing));
+        }
 
         if (!summary.entries.isEmpty()) {
             text += QStringLiteral("\n\n");

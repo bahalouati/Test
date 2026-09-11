@@ -9,6 +9,10 @@ opening a browser.
 
 *The month view: a short day is coloured and says how much is missing, so nothing has to be added up by hand.*
 
+![A day marked as a holiday](docs/holiday.png)
+
+*Marking the 4th a holiday: it turns blue, stops owing its 6 h, and the month drops from 18 h missing over 5 days to 12 h over 4.*
+
 ## Why v2
 
 API v2 is the version Jira Server and Data Center actually serve, and its issue
@@ -26,7 +30,12 @@ Three screens.
 - a Mon-Fri calendar of the month, one cell per day, showing the day's total
   and every issue booked against it
 - **green** at or above a full day, **amber** below it, **red** when hours are
-  missing, **grey** for days that have not happened yet
+  missing, **grey** for days that have not happened yet, **blue** for a holiday
+- **right-click a day to mark it a holiday** — leave, a public holiday, a day
+  off. A holiday owes nothing however empty it is, drops out of the working-day
+  count, and is excluded from the month's missing total. Right-click again to
+  make it a working day. Holidays are kept on this machine, since Jira has no
+  idea when you are off, and carry through to the Excel export
 - each short day says how much is missing, and the header totals it for the
   month
 - a flat work-log table underneath with **Fix version**, **Sprint**, **Merge
@@ -167,7 +176,7 @@ jiradesk --help
 ctest --test-dir build --output-on-failure
 ```
 
-57 cases over the parts that are painful to debug against a live server: base
+60 cases over the parts that are painful to debug against a live server: base
 URL normalisation and context paths, REST endpoint construction, both
 authorization headers, Jira's `+0000` timestamp format in both directions,
 duration parsing, the shape of every payload the client reads (including issues
@@ -179,6 +188,10 @@ that a day in the future is never "missing", and that an over-full day does not
 offset a short one. And the workbook writer, which produces a real file whose
 container and XML escaping are then checked, and the task tracker: one timer at
 a time, and the rules for dropping a task that is no longer yours.
+
+Holidays too: that a marked day owes nothing however empty it is, that marking
+one changes the month total by exactly what that day owed, that a holiday on a
+weekend is not counted as time off, and that the marks survive a reload.
 
 No network and no credentials — nothing here talks to a Jira.
 
@@ -265,8 +278,9 @@ will accept in a query string.
 - **A timer does not survive quitting.** Its time is banked on exit; it does not
   resume on the next launch, because counting the hours the machine was off
   would book a whole night against a task.
-- **Weekends are ignored**, and every working day is assumed to be a full day —
-  there is no holiday or part-time calendar.
+- **Weekends are ignored**, and every working day is assumed to be a full day.
+  Holidays are marked by hand, one day at a time: nothing is imported from a
+  public-holiday calendar and there is no part-time or half-day allowance.
 - **A transition needing a screen field will fail**, with Jira's own message
   naming the field. Do those in the browser.
 - **Attachments are not listed or downloaded.**

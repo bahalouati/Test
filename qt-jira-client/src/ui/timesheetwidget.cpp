@@ -4,7 +4,9 @@
 #include "core/jiraclient.h"
 #include "core/timesheetexport.h"
 
+#include <QAction>
 #include <QComboBox>
+#include <QMenu>
 #include <QDesktopServices>
 #include <QFileDialog>
 #include <QHBoxLayout>
@@ -32,6 +34,8 @@ QColor fillFor(DayStatus status)
     switch (status) {
     case DayStatus::Future:
         return QColor(QStringLiteral("#D9D9D9"));
+    case DayStatus::Holiday:
+        return QColor(QStringLiteral("#DDEBF7"));
     case DayStatus::Complete:
         return QColor(QStringLiteral("#C6EFCE"));
     case DayStatus::Partial:
@@ -76,6 +80,8 @@ TimesheetWidget::TimesheetWidget(QWidget *parent)
     ui->year->setCurrentText(QString::number(today.year()));
 
     ui->progress->setVisible(false);
+    ui->calendar->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_holidays.load();
     ui->calendar->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
     connect(ui->refresh, &QPushButton::clicked, this, &TimesheetWidget::refresh);
@@ -84,6 +90,8 @@ TimesheetWidget::TimesheetWidget(QWidget *parent)
     connect(ui->month, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
     connect(ui->year, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
     connect(ui->calendar, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
+    connect(ui->calendar, &QWidget::customContextMenuRequested,
+            this, &TimesheetWidget::showCalendarMenu);
     connect(ui->table, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
 
     buildCalendar();
@@ -158,6 +166,8 @@ void TimesheetWidget::loadFailed(const QString &message)
 {
     ui->refresh->setEnabled(true);
     ui->progress->setVisible(false);
+    ui->calendar->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_holidays.load();
     emit errorOccurred(message);
 }
 
@@ -165,6 +175,8 @@ void TimesheetWidget::loadFinished(const QList<TimesheetEntry> &entries)
 {
     ui->refresh->setEnabled(true);
     ui->progress->setVisible(false);
+    ui->calendar->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_holidays.load();
     m_entries = entries;
     ui->exportCsv->setEnabled(!entries.isEmpty());
     ui->exportXlsx->setEnabled(!entries.isEmpty());
@@ -179,7 +191,8 @@ void TimesheetWidget::buildCalendar()
 {
     const QDate first = firstOfMonth();
     const QDate last = lastOfMonth();
-    m_days = jira::summariseDays(m_entries, first, last, QDate::currentDate(), m_settings.rules);
+    m_days = jira::summariseDays(m_entries, first, last, QDate::currentDate(), m_settings.rules,
+                                 m_holidays);
 
     // Lay the month out as weeks of Mon-Fri, the way the Excel calendar reads.
     const int leading = first.dayOfWeek() - 1;           // Monday == 0
@@ -203,7 +216,9 @@ void TimesheetWidget::buildCalendar()
                                .arg(day.day())
                                .arg(tr("Total: %1h").arg(formatHours(summary.hours)));
 
-        if (summary.isMissing(m_settings.rules)) {
+        if (summary.isHoliday()) {
+            text += QLatin1Char('\n') + tr("Holiday");
+        } else if (summary.isMissing(m_settings.rules)) {
             text += QLatin1Char('\n')
                     + tr("Missing %1h").arg(formatHours(summary.missingHours(m_settings.rules)));
         }
@@ -288,9 +303,19 @@ void TimesheetWidget::updateSummary()
             ++shortDays;
     }
 
+    int holidays = 0;
+    for (const DaySummary &day : std::as_const(m_days)) {
+        if (day.isHoliday())
+            ++holidays;
+    }
+
     QString text = tr("<b>%1 h logged</b> across %2 working days")
                            .arg(formatHours(logged))
-                           .arg(m_days.size());
+                           .arg(m_days.size() - holidays);
+    if (holidays > 0) {
+        text += QLatin1String(" &nbsp;·&nbsp; ")
+                + (holidays == 1 ? tr("1 holiday") : tr("%1 holidays").arg(holidays));
+    }
     if (missing > 0.0) {
         text += tr(" &nbsp;·&nbsp; <span style='color:#b3261e;'><b>%1 h missing</b> over %2 %3</span>")
                         .arg(formatHours(missing))
@@ -303,6 +328,53 @@ void TimesheetWidget::updateSummary()
                     .arg(formatHours(m_settings.rules.fullDayHours))
                     .arg(formatHours(m_settings.rules.partialDayHours));
     ui->summary->setText(text);
+}
+
+QDate TimesheetWidget::selectedDay() const
+{
+    QTableWidgetItem *item = ui->calendar->currentItem();
+    return item ? item->data(Qt::UserRole).toDate() : QDate();
+}
+
+void TimesheetWidget::showCalendarMenu(const QPoint &position)
+{
+    QTableWidgetItem *item = ui->calendar->itemAt(position);
+    if (!item)
+        return;
+    ui->calendar->setCurrentItem(item);
+
+    const QDate day = item->data(Qt::UserRole).toDate();
+    if (!day.isValid())
+        return;
+
+    QMenu menu(this);
+    QAction *toggle = menu.addAction(m_holidays.contains(day)
+                                             ? tr("Not a holiday")
+                                             : tr("Mark %1 as a holiday")
+                                                       .arg(QLocale().toString(day, QLocale::ShortFormat)));
+    connect(toggle, &QAction::triggered, this, &TimesheetWidget::toggleHoliday);
+    menu.exec(ui->calendar->viewport()->mapToGlobal(position));
+}
+
+void TimesheetWidget::toggleHoliday()
+{
+    const QDate day = selectedDay();
+    if (!day.isValid())
+        return;
+
+    const bool nowHoliday = m_holidays.toggle(day);
+    m_holidays.save();
+
+    // Re-band the month: the day itself changes colour, and the totals change
+    // with it because a holiday is no longer owed.
+    buildCalendar();
+    updateSummary();
+
+    emit statusMessage(nowHoliday
+                               ? tr("%1 is a holiday — it no longer counts as missing.")
+                                         .arg(QLocale().toString(day, QLocale::ShortFormat))
+                               : tr("%1 is a working day again.")
+                                         .arg(QLocale().toString(day, QLocale::ShortFormat)));
 }
 
 void TimesheetWidget::cellActivated(int row, int column)

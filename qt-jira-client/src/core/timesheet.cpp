@@ -1,6 +1,15 @@
 #include "timesheet.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
+#include <QStandardPaths>
+
+#include <algorithm>
 #include <QObject>
 #include <QMap>
 #include <QSettings>
@@ -46,6 +55,8 @@ QString dayStatusLabel(DayStatus status)
     switch (status) {
     case DayStatus::Future:
         return QObject::tr("Upcoming");
+    case DayStatus::Holiday:
+        return QObject::tr("Holiday");
     case DayStatus::Complete:
         return QObject::tr("Complete");
     case DayStatus::Partial:
@@ -56,11 +67,19 @@ QString dayStatusLabel(DayStatus status)
     return {};
 }
 
-DayStatus classifyDay(const QDate &day, double hours, const QDate &today, const TimesheetRules &rules)
+DayStatus classifyDay(const QDate &day,
+                      double hours,
+                      const QDate &today,
+                      const TimesheetRules &rules,
+                      bool isHoliday)
 {
     // A day that has not happened is not missing anything, however empty it is.
     if (day.isValid() && today.isValid() && day > today)
         return DayStatus::Future;
+    // A holiday owes nothing either -- but time booked on one still counts, so
+    // this is checked after the future test and before the thresholds.
+    if (isHoliday)
+        return DayStatus::Holiday;
     if (hours >= rules.fullDayHours)
         return DayStatus::Complete;
     if (hours >= rules.partialDayHours)
@@ -70,7 +89,7 @@ DayStatus classifyDay(const QDate &day, double hours, const QDate &today, const 
 
 double DaySummary::missingHours(const TimesheetRules &rules) const
 {
-    if (status == DayStatus::Future)
+    if (status == DayStatus::Future || status == DayStatus::Holiday)
         return 0.0;
     const double shortfall = rules.fullDayHours - hours;
     return shortfall > 0.0 ? shortfall : 0.0;
@@ -80,7 +99,8 @@ QList<DaySummary> summariseDays(const QList<TimesheetEntry> &entries,
                                 const QDate &from,
                                 const QDate &to,
                                 const QDate &today,
-                                const TimesheetRules &rules)
+                                const TimesheetRules &rules,
+                                const HolidayCalendar &holidays)
 {
     QMap<QDate, QList<TimesheetEntry>> byDay;
     for (const TimesheetEntry &entry : entries) {
@@ -101,7 +121,7 @@ QList<DaySummary> summariseDays(const QList<TimesheetEntry> &entries,
         summary.entries = byDay.value(day);
         for (const TimesheetEntry &entry : summary.entries)
             summary.hours += entry.hours;
-        summary.status = classifyDay(day, summary.hours, today, rules);
+        summary.status = classifyDay(day, summary.hours, today, rules, holidays.contains(day));
         days.append(summary);
     }
     return days;
@@ -121,6 +141,91 @@ double totalLoggedHours(const QList<DaySummary> &days)
     for (const DaySummary &day : days)
         total += day.hours;
     return total;
+}
+
+void HolidayCalendar::add(const QDate &day)
+{
+    if (day.isValid())
+        m_days.insert(day);
+}
+
+void HolidayCalendar::remove(const QDate &day)
+{
+    m_days.remove(day);
+}
+
+bool HolidayCalendar::toggle(const QDate &day)
+{
+    if (!day.isValid())
+        return false;
+    if (m_days.contains(day)) {
+        m_days.remove(day);
+        return false;
+    }
+    m_days.insert(day);
+    return true;
+}
+
+QList<QDate> HolidayCalendar::days() const
+{
+    QList<QDate> sorted(m_days.cbegin(), m_days.cend());
+    std::sort(sorted.begin(), sorted.end());
+    return sorted;
+}
+
+int HolidayCalendar::countIn(const QDate &from, const QDate &to, const TimesheetRules &rules) const
+{
+    if (!from.isValid() || !to.isValid() || from > to)
+        return 0;
+    int count = 0;
+    for (const QDate &day : m_days) {
+        // A holiday on a weekend was never a working day, so counting it would
+        // overstate the time off.
+        if (day >= from && day <= to && rules.isWorkingDay(day))
+            ++count;
+    }
+    return count;
+}
+
+QString HolidayCalendar::storagePath()
+{
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return directory + QStringLiteral("/holidays.json");
+}
+
+void HolidayCalendar::load()
+{
+    QFile file(storagePath());
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    file.close();
+
+    m_days.clear();
+    for (const QJsonValue &entry : document.object().value(QStringLiteral("days")).toArray()) {
+        const QDate day = QDate::fromString(entry.toString(), Qt::ISODate);
+        if (day.isValid())
+            m_days.insert(day);
+    }
+}
+
+void HolidayCalendar::save() const
+{
+    const QString path = storagePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+
+    QJsonArray array;
+    for (const QDate &day : days())
+        array.append(day.toString(Qt::ISODate));
+
+    QJsonObject root;
+    root.insert(QStringLiteral("days"), array);
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
 }
 
 TimesheetSettings TimesheetSettings::load()

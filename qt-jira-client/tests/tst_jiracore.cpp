@@ -10,6 +10,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QCoreApplication>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -58,6 +59,9 @@ private slots:
     void runsOneTimerAtATime();
     void dropsTasksNoLongerAssignedToMe();
     void keepsUnassignedTasksThatHoldTime();
+    void holidaysOweNothing();
+    void holidaysLeaveTheMonthTotalAlone();
+    void persistsHolidaysAcrossLoads();
     void validatesWorklogDurations_data();
     void validatesWorklogDurations();
 };
@@ -805,6 +809,99 @@ void TestJiraCore::keepsUnassignedTasksThatHoldTime()
     tracker.remove(QStringLiteral("A-1"));
     QVERIFY(tracker.tasks().isEmpty());
     QVERIFY(tracker.currentIssueKey().isEmpty());
+}
+
+void TestJiraCore::holidaysOweNothing()
+{
+    jira::TimesheetRules rules;
+    const QDate today(2026, 9, 11);
+
+    // A past day with nothing logged is short; the same day as a holiday is not.
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 0.0, today, rules, false), jira::DayStatus::Short);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 0.0, today, rules, true), jira::DayStatus::Holiday);
+
+    // Even a part-logged holiday stays a holiday -- the time was volunteered.
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 3.0, today, rules, true), jira::DayStatus::Holiday);
+
+    // A future day is still future; the holiday flag must not override that.
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 25), 0.0, today, rules, true), jira::DayStatus::Future);
+
+    jira::DaySummary holiday;
+    holiday.day = QDate(2026, 9, 10);
+    holiday.status = jira::DayStatus::Holiday;
+    QCOMPARE(holiday.missingHours(rules), 0.0);
+    QVERIFY(!holiday.isMissing(rules));
+    QVERIFY(holiday.isHoliday());
+}
+
+void TestJiraCore::holidaysLeaveTheMonthTotalAlone()
+{
+    jira::TimesheetRules rules;
+    const QDate today(2026, 9, 11);
+
+    jira::TimesheetEntry worked;
+    worked.day = QDate(2026, 9, 7);
+    worked.issueKey = QStringLiteral("OPS-1");
+    worked.hours = 8.0;
+
+    jira::HolidayCalendar holidays;
+    QVERIFY(holidays.toggle(QDate(2026, 9, 8)));    // returns the new state
+    QVERIFY(holidays.contains(QDate(2026, 9, 8)));
+    QVERIFY(!holidays.toggle(QDate(2026, 9, 8)));   // toggles back off
+    holidays.add(QDate(2026, 9, 8));
+    holidays.add(QDate(2026, 9, 9));
+
+    const QList<jira::DaySummary> days = jira::summariseDays(
+            {worked}, QDate(2026, 9, 7), QDate(2026, 9, 11), today, rules, holidays);
+    QCOMPARE(days.size(), 5);
+
+    QCOMPARE(days.at(0).status, jira::DayStatus::Complete);   // Mon, worked
+    QCOMPARE(days.at(1).status, jira::DayStatus::Holiday);    // Tue
+    QCOMPARE(days.at(2).status, jira::DayStatus::Holiday);    // Wed
+    QCOMPARE(days.at(3).status, jira::DayStatus::Short);      // Thu
+    QCOMPARE(days.at(4).status, jira::DayStatus::Short);      // Fri, today
+
+    // Without the two holidays this month would owe 8+8+8 = 24 h; with them, 16.
+    QCOMPARE(jira::totalMissingHours(days, rules), 16.0);
+    QCOMPARE(jira::totalLoggedHours(days), 8.0);
+
+    // Weekends were never working days, so a holiday on one is not time off.
+    jira::HolidayCalendar weekend;
+    weekend.add(QDate(2026, 9, 12));   // Saturday
+    weekend.add(QDate(2026, 9, 8));    // Tuesday
+    QCOMPARE(weekend.count(), 2);
+    QCOMPARE(weekend.countIn(QDate(2026, 9, 1), QDate(2026, 9, 30), rules), 1);
+}
+
+void TestJiraCore::persistsHolidaysAcrossLoads()
+{
+    // Point the application at a scratch data directory so the real one is
+    // left alone.
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString previous = QCoreApplication::applicationName();
+    QCoreApplication::setApplicationName(
+            QStringLiteral("JiraDeskTest%1").arg(QDateTime::currentMSecsSinceEpoch()));
+
+    jira::HolidayCalendar saved;
+    saved.add(QDate(2026, 12, 24));
+    saved.add(QDate(2026, 12, 25));
+    saved.add(QDate(2026, 1, 1));
+    saved.save();
+
+    jira::HolidayCalendar loaded;
+    loaded.load();
+    QCOMPARE(loaded.count(), 3);
+    QVERIFY(loaded.contains(QDate(2026, 12, 25)));
+    QVERIFY(!loaded.contains(QDate(2026, 12, 26)));
+
+    // days() comes back in order, whatever order they went in.
+    const QList<QDate> days = loaded.days();
+    QCOMPARE(days.first(), QDate(2026, 1, 1));
+    QCOMPARE(days.last(), QDate(2026, 12, 25));
+
+    QFile::remove(jira::HolidayCalendar::storagePath());
+    QCoreApplication::setApplicationName(previous);
 }
 
 void TestJiraCore::validatesWorklogDurations_data()
