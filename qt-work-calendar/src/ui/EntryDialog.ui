@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>EntryDialog</class>
+ <widget class="QDialog" name="EntryDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>640</width><height>560</height></rect>
+  </property>
+  <property name="windowTitle"><string>Work entry</string></property>
+  <property name="sizeGripEnabled"><bool>true</bool></property>
+  <layout class="QVBoxLayout" name="dialogLayout">
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex"><number>0</number></property>
+
+     <widget class="QWidget" name="tabWork">
+      <attribute name="title"><string>&amp;Work</string></attribute>
+      <layout class="QFormLayout" name="workLayout">
+       <item row="0" column="0">
+        <widget class="QLabel" name="labelDate"><property name="text"><string>Date</string></property></widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QDateEdit" name="dateEdit">
+         <property name="calendarPopup"><bool>true</bool></property>
+         <property name="displayFormat"><string>dddd, yyyy-MM-dd</string></property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="labelDuration"><property name="text"><string>Duration</string></property></widget>
+       </item>
+       <item row="1" column="1">
+        <layout class="QHBoxLayout" name="durationLayout">
+         <item>
+          <widget class="QLineEdit" name="lineDuration">
+           <property name="placeholderText"><string>2h30, 2.5, 150m, 2:30</string></property>
+           <property name="maximumWidth"><number>140</number></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelDurationHint">
+           <property name="text"><string>&#8212;</string></property>
+           <property name="styleSheet"><string>color: #777;</string></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="durationSpacer">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="2" column="1">
+        <layout class="QHBoxLayout" name="quickDurationLayout">
+         <item><widget class="QPushButton" name="buttonQuarterHour"><property name="text"><string>+15m</string></property><property name="maximumWidth"><number>60</number></property></widget></item>
+         <item><widget class="QPushButton" name="buttonHalfHour"><property name="text"><string>+30m</string></property><property name="maximumWidth"><number>60</number></property></widget></item>
+         <item><widget class="QPushButton" name="buttonOneHour"><property name="text"><string>+1h</string></property><property name="maximumWidth"><number>60</number></property></widget></item>
+         <item><widget class="QPushButton" name="buttonHalfDay"><property name="text"><string>Half day</string></property></widget></item>
+         <item><widget class="QPushButton" name="buttonFullDay"><property name="text"><string>Full day</string></property></widget></item>
+         <item><widget class="QPushButton" name="buttonRestOfDay"><property name="text"><string>Fill the day</string></property><property name="toolTip"><string>Set the duration to whatever is still missing from this day's target</string></property></widget></item>
+         <item>
+          <spacer name="quickDurationSpacer">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="3" column="0">
+        <widget class="QCheckBox" name="checkUseTimes"><property name="text"><string>Start and end</string></property></widget>
+       </item>
+       <item row="3" column="1">
+        <layout class="QHBoxLayout" name="timesLayout">
+         <item>
+          <widget class="QTimeEdit" name="timeStart"><property name="displayFormat"><string>HH:mm</string></property></widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="labelTimeSeparator"><property name="text"><string>to</string></property></widget>
+         </item>
+         <item>
+          <widget class="QTimeEdit" name="timeEnd"><property name="displayFormat"><string>HH:mm</string></property></widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="checkDurationFromTimes">
+           <property name="text"><string>Take the duration from these times</string></property>
+           <property name="checked"><bool>true</bool></property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="timesSpacer">
+           <property name="orientation"><enum>Qt::Horizontal</enum></property>
+           <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="labelActivity"><property name="text"><string>Activity</string></property></widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QComboBox" name="comboActivity"/>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="labelStatus"><property name="text"><string>Status</string></property></widget>
+       </item>
+       <item row="5" column="1">
+        <widget class="QComboBox" name="comboStatus"/>
+       </item>
+       <item row="6" column="0">
+        <widget class="QLabel" name="labelLocation"><property name="text"><string>Location</string></property></widget>
+       </item>
+       <item row="6" column="1">
+        <widget class="QComboBox" name="comboLocation"/>
+       </item>
+       <item row="7" column="1">
+        <widget class="QCheckBox" name="checkBillable">
+         <property name="text"><string>Billable</string></property>
+         <property name="checked"><bool>true</bool></property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabIssue">
+      <attribute name="title"><string>&amp;Issue</string></attribute>
+      <layout class="QFormLayout" name="issueLayout">
+       <item row="0" column="0"><widget class="QLabel" name="labelIssueKey"><property name="text"><string>Issue key</string></property></widget></item>
+       <item row="0" column="1">
+        <layout class="QHBoxLayout" name="issueKeyLayout">
+         <item>
+          <widget class="QComboBox" name="comboIssueKey">
+           <property name="editable"><bool>true</bool></property>
+           <property name="insertPolicy"><enum>QComboBox::NoInsert</enum></property>
+           <property name="toolTip"><string>Pick a recent issue to fill in everything you logged against it last time</string></property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="buttonFillFromRecent">
+           <property name="text"><string>Reuse details</string></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="1" column="0"><widget class="QLabel" name="labelSummary"><property name="text"><string>Summary</string></property></widget></item>
+       <item row="1" column="1"><widget class="QLineEdit" name="lineSummary"><property name="placeholderText"><string>What the issue is about</string></property></widget></item>
+       <item row="2" column="0"><widget class="QLabel" name="labelProject"><property name="text"><string>Project</string></property></widget></item>
+       <item row="2" column="1"><widget class="QLineEdit" name="lineProject"><property name="placeholderText"><string>Left empty, it is taken from the issue key</string></property></widget></item>
+       <item row="3" column="0"><widget class="QLabel" name="labelIssueType"><property name="text"><string>Issue type</string></property></widget></item>
+       <item row="3" column="1"><widget class="QComboBox" name="comboIssueType"><property name="editable"><bool>true</bool></property></widget></item>
+       <item row="4" column="0"><widget class="QLabel" name="labelPriority"><property name="text"><string>Priority</string></property></widget></item>
+       <item row="4" column="1"><widget class="QComboBox" name="comboPriority"/></item>
+       <item row="5" column="0"><widget class="QLabel" name="labelEpic"><property name="text"><string>Epic</string></property></widget></item>
+       <item row="5" column="1"><widget class="QComboBox" name="comboEpic"><property name="editable"><bool>true</bool></property></widget></item>
+       <item row="6" column="0"><widget class="QLabel" name="labelSprint"><property name="text"><string>Sprint</string></property></widget></item>
+       <item row="6" column="1"><widget class="QComboBox" name="comboSprint"><property name="editable"><bool>true</bool></property></widget></item>
+       <item row="7" column="0"><widget class="QLabel" name="labelComponent"><property name="text"><string>Component</string></property></widget></item>
+       <item row="7" column="1"><widget class="QComboBox" name="comboComponent"><property name="editable"><bool>true</bool></property></widget></item>
+       <item row="8" column="0"><widget class="QLabel" name="labelFixVersion"><property name="text"><string>Fix version</string></property></widget></item>
+       <item row="8" column="1"><widget class="QComboBox" name="comboFixVersion"><property name="editable"><bool>true</bool></property></widget></item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabLinks">
+      <attribute name="title"><string>&amp;Links</string></attribute>
+      <layout class="QFormLayout" name="linksLayout">
+       <item row="0" column="0"><widget class="QLabel" name="labelIssueUrl"><property name="text"><string>Issue URL</string></property></widget></item>
+       <item row="0" column="1">
+        <layout class="QHBoxLayout" name="issueUrlLayout">
+         <item><widget class="QLineEdit" name="lineIssueUrl"/></item>
+         <item><widget class="QPushButton" name="buttonOpenIssueUrl"><property name="text"><string>Open</string></property></widget></item>
+        </layout>
+       </item>
+       <item row="1" column="0"><widget class="QLabel" name="labelMergeRequest"><property name="text"><string>Merge request</string></property></widget></item>
+       <item row="1" column="1">
+        <layout class="QHBoxLayout" name="mergeRequestLayout">
+         <item><widget class="QLineEdit" name="lineMergeRequest"/></item>
+         <item><widget class="QPushButton" name="buttonOpenMergeRequest"><property name="text"><string>Open</string></property></widget></item>
+        </layout>
+       </item>
+       <item row="2" column="0"><widget class="QLabel" name="labelBranch"><property name="text"><string>Branch</string></property></widget></item>
+       <item row="2" column="1"><widget class="QComboBox" name="comboBranch"><property name="editable"><bool>true</bool></property></widget></item>
+       <item row="3" column="0"><widget class="QLabel" name="labelTestsheetName"><property name="text"><string>Testsheet</string></property></widget></item>
+       <item row="3" column="1"><widget class="QLineEdit" name="lineTestsheetName"/></item>
+       <item row="4" column="0"><widget class="QLabel" name="labelTestsheetUrl"><property name="text"><string>Testsheet URL</string></property></widget></item>
+       <item row="4" column="1">
+        <layout class="QHBoxLayout" name="testsheetUrlLayout">
+         <item><widget class="QLineEdit" name="lineTestsheetUrl"/></item>
+         <item><widget class="QPushButton" name="buttonOpenTestsheet"><property name="text"><string>Open</string></property></widget></item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabNotes">
+      <attribute name="title"><string>&amp;Notes</string></attribute>
+      <layout class="QVBoxLayout" name="notesLayout">
+       <item>
+        <widget class="QLabel" name="labelDescription">
+         <property name="text"><string>What was actually done - this is what ends up in the stand-up note</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPlainTextEdit" name="textDescription"/>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="tagsLayout">
+         <item><widget class="QLabel" name="labelTags"><property name="text"><string>Tags</string></property></widget></item>
+         <item>
+          <widget class="QLineEdit" name="lineTags">
+           <property name="placeholderText"><string>comma, separated, labels</string></property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelError">
+     <property name="text"><string/></property>
+     <property name="styleSheet"><string>color: #B00020;</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation"><enum>Qt::Horizontal</enum></property>
+     <property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Save</set></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

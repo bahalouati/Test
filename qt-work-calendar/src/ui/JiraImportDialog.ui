@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>JiraImportDialog</class>
+ <widget class="QDialog" name="JiraImportDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>640</width><height>480</height></rect>
+  </property>
+  <property name="windowTitle"><string>Import from Jira</string></property>
+  <layout class="QVBoxLayout" name="dialogLayout">
+   <item>
+    <layout class="QFormLayout" name="formLayout">
+     <item row="0" column="0"><widget class="QLabel" name="labelServer"><property name="text"><string>Server</string></property></widget></item>
+     <item row="0" column="1"><widget class="QLineEdit" name="lineServer"><property name="placeholderText"><string>https://jira.example.com</string></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="labelUser"><property name="text"><string>User name</string></property></widget></item>
+     <item row="1" column="1"><widget class="QLineEdit" name="lineUser"/></item>
+     <item row="2" column="0"><widget class="QLabel" name="labelToken"><property name="text"><string>Password or token</string></property></widget></item>
+     <item row="2" column="1"><widget class="QLineEdit" name="lineToken"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="labelPeriod"><property name="text"><string>Period</string></property></widget></item>
+     <item row="3" column="1">
+      <layout class="QHBoxLayout" name="periodLayout">
+       <item><widget class="QDateEdit" name="dateFrom"><property name="calendarPopup"><bool>true</bool></property><property name="displayFormat"><string>yyyy-MM-dd</string></property></widget></item>
+       <item><widget class="QLabel" name="labelTo"><property name="text"><string>to</string></property></widget></item>
+       <item><widget class="QDateEdit" name="dateTo"><property name="calendarPopup"><bool>true</bool></property><property name="displayFormat"><string>yyyy-MM-dd</string></property></widget></item>
+       <item><widget class="QPushButton" name="buttonThisMonth"><property name="text"><string>This month</string></property></widget></item>
+       <item><widget class="QPushButton" name="buttonLastMonth"><property name="text"><string>Last month</string></property></widget></item>
+       <item><spacer name="periodSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QCheckBox" name="checkRememberCredentials">
+     <property name="text"><string>Remember these credentials in the settings file</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QProgressBar" name="progressBar">
+     <property name="value"><number>0</number></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPlainTextEdit" name="textLog">
+     <property name="readOnly"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelHelp">
+     <property name="text"><string>Worklogs already imported are refreshed in place rather than duplicated, so running the same period twice is safe. Entries you typed yourself are never touched.</string></property>
+     <property name="wordWrap"><bool>true</bool></property>
+     <property name="styleSheet"><string>color: #777;</string></property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="buttonsLayout">
+     <item><widget class="QPushButton" name="buttonImport"><property name="text"><string>Import</string></property><property name="default"><bool>true</bool></property></widget></item>
+     <item><widget class="QPushButton" name="buttonCancelImport"><property name="text"><string>Stop</string></property><property name="enabled"><bool>false</bool></property></widget></item>
+     <item><spacer name="buttonsSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+     <item><widget class="QPushButton" name="buttonClose"><property name="text"><string>Close</string></property></widget></item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

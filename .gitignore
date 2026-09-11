@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 .venv/
 *.egg-info/
+
+# Qt desktop application
+qt-work-calendar/build/
+*.user

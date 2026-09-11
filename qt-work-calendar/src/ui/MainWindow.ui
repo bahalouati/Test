@@ -1,0 +1,659 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>1280</width><height>820</height></rect>
+  </property>
+  <property name="windowTitle">
+   <string>Work Calendar</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="centralLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex"><number>0</number></property>
+
+      <widget class="QWidget" name="tabCalendar">
+       <attribute name="title"><string>&amp;Calendar</string></attribute>
+       <layout class="QVBoxLayout" name="calendarLayout">
+        <item>
+         <layout class="QHBoxLayout" name="monthNavigationLayout">
+          <item>
+           <widget class="QToolButton" name="buttonPreviousMonth">
+            <property name="text"><string>◀</string></property>
+            <property name="toolTip"><string>Previous month</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboMonth">
+            <property name="minimumWidth"><number>130</number></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spinYear">
+            <property name="minimum"><number>1970</number></property>
+            <property name="maximum"><number>2200</number></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="buttonNextMonth">
+            <property name="text"><string>▶</string></property>
+            <property name="toolTip"><string>Next month</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="buttonToday">
+            <property name="text"><string>&amp;Today</string></property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="monthNavigationSpacer">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelMonthSummary">
+            <property name="text"><string>&#8212;</string></property>
+            <property name="textFormat"><enum>Qt::RichText</enum></property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QSplitter" name="calendarSplitter">
+          <property name="orientation"><enum>Qt::Horizontal</enum></property>
+          <property name="childrenCollapsible"><bool>false</bool></property>
+
+          <widget class="QWidget" name="calendarSide">
+           <layout class="QVBoxLayout" name="calendarSideLayout">
+            <property name="leftMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <widget class="MonthGridWidget" name="monthGrid"/>
+            </item>
+            <item>
+             <widget class="HoursBarChart" name="hoursChart"/>
+            </item>
+           </layout>
+          </widget>
+
+          <widget class="QWidget" name="dayPanel">
+           <layout class="QVBoxLayout" name="dayPanelLayout">
+            <property name="leftMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <widget class="QLabel" name="labelSelectedDate">
+              <property name="text"><string>No day selected</string></property>
+              <property name="styleSheet"><string>font-size: 14pt; font-weight: bold;</string></property>
+              <property name="wordWrap"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="labelDayStatus">
+              <property name="text"><string>&#8212;</string></property>
+              <property name="wordWrap"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QProgressBar" name="progressDay">
+              <property name="value"><number>0</number></property>
+              <property name="maximumHeight"><number>14</number></property>
+              <property name="textVisible"><bool>false</bool></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QTableView" name="tableDayEntries">
+              <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+              <property name="selectionMode"><enum>QAbstractItemView::SingleSelection</enum></property>
+              <property name="alternatingRowColors"><bool>true</bool></property>
+              <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
+              <property name="minimumHeight"><number>140</number></property>
+              <attribute name="verticalHeaderVisible"><bool>false</bool></attribute>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="dayButtonsLayout">
+              <item>
+               <widget class="QPushButton" name="buttonAddEntry">
+                <property name="text"><string>&amp;Add</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="buttonEditEntry">
+                <property name="text"><string>&amp;Edit</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="buttonDuplicateEntry">
+                <property name="text"><string>D&amp;uplicate</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="buttonDeleteEntry">
+                <property name="text"><string>&amp;Delete</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="buttonDayType">
+                <property name="text"><string>Day &amp;type...</string></property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTextBrowser" name="textEntryDetail">
+              <property name="openExternalLinks"><bool>true</bool></property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+
+      <widget class="QWidget" name="tabEntries">
+       <attribute name="title"><string>&amp;Entries</string></attribute>
+       <layout class="QVBoxLayout" name="entriesLayout">
+        <item>
+         <widget class="QGroupBox" name="groupFilters">
+          <property name="title"><string>Filters</string></property>
+          <layout class="QGridLayout" name="filterLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="labelSearch">
+             <property name="text"><string>Search</string></property>
+            </widget>
+           </item>
+           <item row="0" column="1" colspan="3">
+            <widget class="QLineEdit" name="lineSearch">
+             <property name="placeholderText"><string>Issue, summary, notes, branch, tags...</string></property>
+             <property name="clearButtonEnabled"><bool>true</bool></property>
+            </widget>
+           </item>
+           <item row="0" column="4">
+            <widget class="QCheckBox" name="checkDateRange">
+             <property name="text"><string>From</string></property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QDateEdit" name="dateFilterFrom">
+             <property name="calendarPopup"><bool>true</bool></property>
+             <property name="displayFormat"><string>yyyy-MM-dd</string></property>
+            </widget>
+           </item>
+           <item row="0" column="6">
+            <widget class="QLabel" name="labelTo">
+             <property name="text"><string>to</string></property>
+            </widget>
+           </item>
+           <item row="0" column="7">
+            <widget class="QDateEdit" name="dateFilterTo">
+             <property name="calendarPopup"><bool>true</bool></property>
+             <property name="displayFormat"><string>yyyy-MM-dd</string></property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="labelFilterActivity">
+             <property name="text"><string>Activity</string></property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="comboFilterActivity"/>
+           </item>
+           <item row="1" column="2">
+            <widget class="QLabel" name="labelFilterProject">
+             <property name="text"><string>Project</string></property>
+            </widget>
+           </item>
+           <item row="1" column="3">
+            <widget class="QComboBox" name="comboFilterProject"/>
+           </item>
+           <item row="1" column="4">
+            <widget class="QLabel" name="labelFilterSprint">
+             <property name="text"><string>Sprint</string></property>
+            </widget>
+           </item>
+           <item row="1" column="5">
+            <widget class="QComboBox" name="comboFilterSprint"/>
+           </item>
+           <item row="1" column="6">
+            <widget class="QLabel" name="labelFilterBillable">
+             <property name="text"><string>Billable</string></property>
+            </widget>
+           </item>
+           <item row="1" column="7">
+            <widget class="QComboBox" name="comboFilterBillable"/>
+           </item>
+           <item row="2" column="0" colspan="8">
+            <layout class="QHBoxLayout" name="filterButtonsLayout">
+             <item>
+              <widget class="QPushButton" name="buttonClearFilters">
+               <property name="text"><string>Clear filters</string></property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="buttonChooseColumns">
+               <property name="text"><string>Columns...</string></property>
+              </widget>
+             </item>
+             <item>
+              <spacer name="filterButtonsSpacer">
+               <property name="orientation"><enum>Qt::Horizontal</enum></property>
+               <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+              </spacer>
+             </item>
+             <item>
+              <widget class="QLabel" name="labelEntriesSummary">
+               <property name="text"><string>&#8212;</string></property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QTableView" name="tableEntries">
+          <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+          <property name="selectionMode"><enum>QAbstractItemView::ExtendedSelection</enum></property>
+          <property name="alternatingRowColors"><bool>true</bool></property>
+          <property name="sortingEnabled"><bool>true</bool></property>
+          <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
+          <property name="contextMenuPolicy"><enum>Qt::CustomContextMenu</enum></property>
+          <attribute name="verticalHeaderVisible"><bool>false</bool></attribute>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+
+      <widget class="QWidget" name="tabReports">
+       <attribute name="title"><string>&amp;Reports</string></attribute>
+       <layout class="QVBoxLayout" name="reportsLayout">
+        <item>
+         <layout class="QHBoxLayout" name="reportPeriodLayout">
+          <item>
+           <widget class="QLabel" name="labelReportPeriod">
+            <property name="text"><string>Period</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="comboReportPeriod"/>
+          </item>
+          <item>
+           <widget class="QDateEdit" name="dateReportFrom">
+            <property name="calendarPopup"><bool>true</bool></property>
+            <property name="displayFormat"><string>yyyy-MM-dd</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="labelReportTo">
+            <property name="text"><string>to</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QDateEdit" name="dateReportTo">
+            <property name="calendarPopup"><bool>true</bool></property>
+            <property name="displayFormat"><string>yyyy-MM-dd</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="buttonRefreshReport">
+            <property name="text"><string>Refresh</string></property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="reportPeriodSpacer">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="groupTotals">
+          <property name="title"><string>Totals</string></property>
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+            <horstretch>0</horstretch><verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <layout class="QGridLayout" name="totalsLayout">
+           <item row="0" column="0"><widget class="QLabel" name="captionLogged"><property name="text"><string>Logged</string></property></widget></item>
+           <item row="0" column="1"><widget class="QLabel" name="labelTotalLogged"><property name="text"><string>&#8212;</string></property><property name="styleSheet"><string>font-weight: bold;</string></property></widget></item>
+           <item row="0" column="2"><widget class="QLabel" name="captionExpected"><property name="text"><string>Expected</string></property></widget></item>
+           <item row="0" column="3"><widget class="QLabel" name="labelTotalExpected"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="0" column="4"><widget class="QLabel" name="captionBalance"><property name="text"><string>Balance</string></property></widget></item>
+           <item row="0" column="5"><widget class="QLabel" name="labelTotalBalance"><property name="text"><string>&#8212;</string></property><property name="styleSheet"><string>font-weight: bold;</string></property></widget></item>
+           <item row="1" column="0"><widget class="QLabel" name="captionBillable"><property name="text"><string>Billable</string></property></widget></item>
+           <item row="1" column="1"><widget class="QLabel" name="labelTotalBillable"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="1" column="2"><widget class="QLabel" name="captionDays"><property name="text"><string>Days</string></property></widget></item>
+           <item row="1" column="3"><widget class="QLabel" name="labelTotalDays"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="1" column="4"><widget class="QLabel" name="captionStreak"><property name="text"><string>Streak</string></property></widget></item>
+           <item row="1" column="5"><widget class="QLabel" name="labelTotalStreak"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="2" column="0"><widget class="QLabel" name="captionAverage"><property name="text"><string>Average per day worked</string></property></widget></item>
+           <item row="2" column="1"><widget class="QLabel" name="labelTotalAverage"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="2" column="2"><widget class="QLabel" name="captionEntries"><property name="text"><string>Entries</string></property></widget></item>
+           <item row="2" column="3"><widget class="QLabel" name="labelTotalEntries"><property name="text"><string>&#8212;</string></property></widget></item>
+           <item row="2" column="4"><widget class="QLabel" name="captionAbsences"><property name="text"><string>Absence days</string></property></widget></item>
+           <item row="2" column="5"><widget class="QLabel" name="labelTotalAbsences"><property name="text"><string>&#8212;</string></property></widget></item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSplitter" name="reportSplitter">
+          <property name="orientation"><enum>Qt::Horizontal</enum></property>
+          <widget class="QWidget" name="breakdownSide">
+           <layout class="QVBoxLayout" name="breakdownLayout">
+            <property name="leftMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <layout class="QHBoxLayout" name="groupByLayout">
+              <item>
+               <widget class="QLabel" name="labelGroupBy">
+                <property name="text"><string>Group by</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="comboGroupBy"/>
+              </item>
+              <item>
+               <spacer name="groupBySpacer">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+               </spacer>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <widget class="QTableView" name="tableBreakdown">
+              <property name="selectionBehavior"><enum>QAbstractItemView::SelectRows</enum></property>
+              <property name="alternatingRowColors"><bool>true</bool></property>
+              <property name="editTriggers"><set>QAbstractItemView::NoEditTriggers</set></property>
+              <attribute name="verticalHeaderVisible"><bool>false</bool></attribute>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+          <widget class="QWidget" name="recapSide">
+           <layout class="QVBoxLayout" name="recapLayout">
+            <property name="leftMargin"><number>0</number></property>
+            <property name="topMargin"><number>0</number></property>
+            <property name="rightMargin"><number>0</number></property>
+            <property name="bottomMargin"><number>0</number></property>
+            <item>
+             <widget class="QLabel" name="labelRecap">
+              <property name="text"><string>Recap</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPlainTextEdit" name="textRecap">
+              <property name="readOnly"><bool>true</bool></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="buttonCopyRecap">
+              <property name="text"><string>Copy recap to clipboard</string></property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+
+     </widget>
+    </item>
+   </layout>
+  </widget>
+
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect><x>0</x><y>0</y><width>1280</width><height>24</height></rect>
+   </property>
+   <widget class="QMenu" name="menuFile">
+    <property name="title"><string>&amp;File</string></property>
+    <addaction name="actionNewEntry"/>
+    <addaction name="separator"/>
+    <addaction name="actionImportCsv"/>
+    <addaction name="actionImportJira"/>
+    <addaction name="separator"/>
+    <addaction name="actionExportExcel"/>
+    <addaction name="actionExportCsv"/>
+    <addaction name="separator"/>
+    <addaction name="actionQuit"/>
+   </widget>
+   <widget class="QMenu" name="menuEdit">
+    <property name="title"><string>&amp;Edit</string></property>
+    <addaction name="actionEditEntry"/>
+    <addaction name="actionDuplicateEntry"/>
+    <addaction name="actionDeleteEntry"/>
+    <addaction name="separator"/>
+    <addaction name="actionSetDayType"/>
+    <addaction name="separator"/>
+    <addaction name="actionCopyStandup"/>
+    <addaction name="actionCopyRecap"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title"><string>&amp;View</string></property>
+    <addaction name="actionPreviousMonth"/>
+    <addaction name="actionNextMonth"/>
+    <addaction name="actionToday"/>
+    <addaction name="separator"/>
+    <addaction name="actionShowWeekends"/>
+    <addaction name="actionChooseColumns"/>
+    <addaction name="separator"/>
+    <addaction name="actionRefresh"/>
+   </widget>
+   <widget class="QMenu" name="menuTools">
+    <property name="title"><string>&amp;Tools</string></property>
+    <addaction name="actionStartTimer"/>
+    <addaction name="actionStopTimer"/>
+    <addaction name="actionDiscardTimer"/>
+    <addaction name="separator"/>
+    <addaction name="actionSettings"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title"><string>&amp;Help</string></property>
+    <addaction name="actionAbout"/>
+    <addaction name="actionAboutQt"/>
+   </widget>
+   <addaction name="menuFile"/>
+   <addaction name="menuEdit"/>
+   <addaction name="menuView"/>
+   <addaction name="menuTools"/>
+   <addaction name="menuHelp"/>
+  </widget>
+
+  <widget class="QToolBar" name="toolBar">
+   <property name="windowTitle"><string>Main toolbar</string></property>
+   <attribute name="toolBarArea"><enum>TopToolBarArea</enum></attribute>
+   <attribute name="toolBarBreak"><bool>false</bool></attribute>
+   <addaction name="actionNewEntry"/>
+   <addaction name="actionEditEntry"/>
+   <addaction name="actionDeleteEntry"/>
+   <addaction name="separator"/>
+   <addaction name="actionPreviousMonth"/>
+   <addaction name="actionToday"/>
+   <addaction name="actionNextMonth"/>
+   <addaction name="separator"/>
+   <addaction name="actionStartTimer"/>
+   <addaction name="actionStopTimer"/>
+   <addaction name="separator"/>
+   <addaction name="actionExportExcel"/>
+   <addaction name="actionSettings"/>
+  </widget>
+
+  <widget class="QStatusBar" name="statusbar"/>
+
+  <widget class="QDockWidget" name="dockTimer">
+   <property name="windowTitle"><string>Current task</string></property>
+   <attribute name="dockWidgetArea"><number>8</number></attribute>
+   <widget class="QWidget" name="dockTimerContents">
+    <layout class="QHBoxLayout" name="timerLayout">
+     <item>
+      <widget class="QLabel" name="labelTimerElapsed">
+       <property name="text"><string>00:00:00</string></property>
+       <property name="styleSheet"><string>font-size: 20pt; font-family: monospace;</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelTimerIssueCaption">
+       <property name="text"><string>Issue</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="comboTimerIssue">
+       <property name="editable"><bool>true</bool></property>
+       <property name="minimumWidth"><number>170</number></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelTimerSummaryCaption">
+       <property name="text"><string>Doing</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLineEdit" name="lineTimerSummary">
+       <property name="placeholderText"><string>What are you working on?</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QLabel" name="labelTimerActivityCaption">
+       <property name="text"><string>Activity</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="comboTimerActivity"/>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonTimerStart">
+       <property name="text"><string>Start</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonTimerStop">
+       <property name="text"><string>Stop and log</string></property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="buttonTimerDiscard">
+       <property name="text"><string>Discard</string></property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </widget>
+
+  <action name="actionNewEntry">
+   <property name="text"><string>&amp;New entry...</string></property>
+   <property name="shortcut"><string>Ctrl+N</string></property>
+  </action>
+  <action name="actionEditEntry">
+   <property name="text"><string>&amp;Edit entry...</string></property>
+   <property name="shortcut"><string>Ctrl+E</string></property>
+  </action>
+  <action name="actionDuplicateEntry">
+   <property name="text"><string>D&amp;uplicate entry</string></property>
+   <property name="shortcut"><string>Ctrl+D</string></property>
+  </action>
+  <action name="actionDeleteEntry">
+   <property name="text"><string>&amp;Delete entry</string></property>
+   <property name="shortcut"><string>Del</string></property>
+  </action>
+  <action name="actionSetDayType">
+   <property name="text"><string>Set day &amp;type...</string></property>
+   <property name="shortcut"><string>Ctrl+T</string></property>
+  </action>
+  <action name="actionCopyStandup">
+   <property name="text"><string>Copy &amp;stand-up note</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+C</string></property>
+  </action>
+  <action name="actionCopyRecap">
+   <property name="text"><string>Copy period &amp;recap</string></property>
+  </action>
+  <action name="actionImportCsv">
+   <property name="text"><string>Import from &amp;CSV...</string></property>
+  </action>
+  <action name="actionImportJira">
+   <property name="text"><string>Import from &amp;Jira...</string></property>
+  </action>
+  <action name="actionExportExcel">
+   <property name="text"><string>Export to E&amp;xcel...</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+E</string></property>
+  </action>
+  <action name="actionExportCsv">
+   <property name="text"><string>Export to CS&amp;V...</string></property>
+  </action>
+  <action name="actionQuit">
+   <property name="text"><string>&amp;Quit</string></property>
+   <property name="shortcut"><string>Ctrl+Q</string></property>
+  </action>
+  <action name="actionPreviousMonth">
+   <property name="text"><string>&amp;Previous month</string></property>
+   <property name="shortcut"><string>Ctrl+PgUp</string></property>
+  </action>
+  <action name="actionNextMonth">
+   <property name="text"><string>&amp;Next month</string></property>
+   <property name="shortcut"><string>Ctrl+PgDown</string></property>
+  </action>
+  <action name="actionToday">
+   <property name="text"><string>Go to &amp;today</string></property>
+   <property name="shortcut"><string>Ctrl+Home</string></property>
+  </action>
+  <action name="actionShowWeekends">
+   <property name="text"><string>Show &amp;weekends</string></property>
+   <property name="checkable"><bool>true</bool></property>
+  </action>
+  <action name="actionChooseColumns">
+   <property name="text"><string>&amp;Columns...</string></property>
+  </action>
+  <action name="actionRefresh">
+   <property name="text"><string>&amp;Refresh</string></property>
+   <property name="shortcut"><string>F5</string></property>
+  </action>
+  <action name="actionStartTimer">
+   <property name="text"><string>&amp;Start timer</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+S</string></property>
+  </action>
+  <action name="actionStopTimer">
+   <property name="text"><string>Sto&amp;p timer and log</string></property>
+   <property name="shortcut"><string>Ctrl+Shift+X</string></property>
+  </action>
+  <action name="actionDiscardTimer">
+   <property name="text"><string>&amp;Discard timer</string></property>
+  </action>
+  <action name="actionSettings">
+   <property name="text"><string>&amp;Settings...</string></property>
+   <property name="shortcut"><string>Ctrl+,</string></property>
+  </action>
+  <action name="actionAbout">
+   <property name="text"><string>&amp;About Work Calendar</string></property>
+  </action>
+  <action name="actionAboutQt">
+   <property name="text"><string>About &amp;Qt</string></property>
+  </action>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>MonthGridWidget</class>
+   <extends>QWidget</extends>
+   <header>widgets/MonthGridWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>HoursBarChart</class>
+   <extends>QWidget</extends>
+   <header>widgets/HoursBarChart.h</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>
