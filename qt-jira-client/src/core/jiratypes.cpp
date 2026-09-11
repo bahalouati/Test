@@ -97,6 +97,101 @@ bool isValidDuration(const QString &text)
     return pattern.match(text).hasMatch();
 }
 
+QString sprintNameFromField(const QJsonValue &field)
+{
+    const QJsonArray entries = field.toArray();
+    // The last entry is the current sprint; earlier ones are sprints the issue
+    // has already been through.
+    for (int index = entries.size() - 1; index >= 0; --index) {
+        const QJsonValue entry = entries.at(index);
+
+        // Modern shape: a real object.
+        if (entry.isObject()) {
+            const QString name = entry.toObject().value(QLatin1String("name")).toString();
+            if (!name.isEmpty())
+                return name;
+            continue;
+        }
+
+        // Jira Server shape: the Java toString(), with name= in a bracketed list.
+        const QString text = entry.toString();
+        const qsizetype start = text.indexOf(QLatin1String("name="));
+        if (start < 0)
+            continue;
+        const qsizetype from = start + 5;
+        qsizetype end = text.indexOf(QLatin1Char(','), from);
+        if (end < 0)
+            end = text.indexOf(QLatin1Char(']'), from);
+        if (end < 0)
+            end = text.size();
+        const QString name = text.mid(from, end - from).trimmed();
+        if (!name.isEmpty())
+            return name;
+    }
+
+    // A single object rather than an array happens on some configurations.
+    if (field.isObject())
+        return field.toObject().value(QLatin1String("name")).toString();
+    return {};
+}
+
+QList<Attachment> Attachment::listFromJson(const QJsonValue &value)
+{
+    QList<Attachment> attachments;
+    const QJsonArray array = value.toArray();
+    attachments.reserve(array.size());
+    for (const QJsonValue &entry : array) {
+        const QJsonObject object = entry.toObject();
+        Attachment attachment;
+        attachment.id = stringAt(object, "id");
+        attachment.filename = stringAt(object, "filename");
+        attachment.contentUrl = stringAt(object, "content");
+        attachment.mimeType = stringAt(object, "mimeType");
+        attachment.size = qint64(object.value(QLatin1String("size")).toDouble());
+        if (!attachment.filename.isEmpty())
+            attachments.append(attachment);
+    }
+    return attachments;
+}
+
+QList<RemoteLink> RemoteLink::listFromJson(const QJsonValue &value)
+{
+    QList<RemoteLink> links;
+    const QJsonArray array = value.toArray();
+    links.reserve(array.size());
+    for (const QJsonValue &entry : array) {
+        const QJsonObject object = entry.toObject().value(QLatin1String("object")).toObject();
+        RemoteLink link;
+        link.url = object.value(QLatin1String("url")).toString();
+        link.title = object.value(QLatin1String("title")).toString();
+        if (!link.url.isEmpty())
+            links.append(link);
+    }
+    return links;
+}
+
+Attachment findAttachment(const QList<Attachment> &attachments, const QString &marker)
+{
+    if (marker.isEmpty())
+        return {};
+    for (const Attachment &attachment : attachments) {
+        if (attachment.filename.contains(marker, Qt::CaseInsensitive))
+            return attachment;
+    }
+    return {};
+}
+
+QString findLinkUrl(const QList<RemoteLink> &links, const QString &marker)
+{
+    if (marker.isEmpty())
+        return {};
+    for (const RemoteLink &link : links) {
+        if (link.url.contains(marker, Qt::CaseInsensitive))
+            return link.url;
+    }
+    return {};
+}
+
 QString issueSortKey(const QString &key)
 {
     const qsizetype dash = key.lastIndexOf(QLatin1Char('-'));
@@ -227,6 +322,20 @@ Issue Issue::fromJson(const QJsonObject &object)
 
     issue.labels = namesOf(fields.value(QLatin1String("labels")), "name");
     issue.components = namesOf(fields.value(QLatin1String("components")), "name");
+    issue.fixVersions = namesOf(fields.value(QLatin1String("fixVersions")), "name");
+    issue.attachments = Attachment::listFromJson(fields.value(QLatin1String("attachment")));
+
+    // The sprint lives in a custom field whose id differs per instance, so scan
+    // for any customfield_* that parses as a sprint rather than hard-coding one.
+    for (auto it = fields.begin(); it != fields.end(); ++it) {
+        if (!it.key().startsWith(QLatin1String("customfield_")) || it.value().isNull())
+            continue;
+        const QString name = sprintNameFromField(it.value());
+        if (!name.isEmpty()) {
+            issue.sprint = name;
+            break;
+        }
+    }
 
     issue.created = parseDateTime(stringAt(fields, "created"));
     issue.updated = parseDateTime(stringAt(fields, "updated"));

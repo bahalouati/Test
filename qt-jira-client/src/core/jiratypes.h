@@ -30,6 +30,13 @@ bool isValidDuration(const QString &text);
 // lexically (which would put OPS-10 before OPS-9).
 QString issueSortKey(const QString &key);
 
+// Jira Server's sprint custom field is an array whose entries are the Java
+// toString() of the sprint object:
+//   com.atlassian.greenhopper.service.sprint.Sprint@1f[id=42,...,name=Sprint 12,...]
+// Newer instances return a plain JSON object instead. Handles both shapes and
+// returns the last entry's name -- the current sprint.
+QString sprintNameFromField(const QJsonValue &field);
+
 struct User {
     QString accountId;      // Cloud
     QString name;           // Server / Data Center username
@@ -43,6 +50,31 @@ struct User {
 
     static User fromJson(const QJsonObject &object);
 };
+
+struct Attachment {
+    QString id;
+    QString filename;
+    QString contentUrl;   // "content" -- a direct download URL
+    QString mimeType;
+    qint64 size = 0;
+
+    bool isNull() const { return filename.isEmpty(); }
+
+    static QList<Attachment> listFromJson(const QJsonValue &value);
+};
+
+struct RemoteLink {
+    QString title;
+    QString url;
+
+    static QList<RemoteLink> listFromJson(const QJsonValue &value);
+};
+
+// First attachment whose filename contains `marker`, case-insensitively.
+Attachment findAttachment(const QList<Attachment> &attachments, const QString &marker);
+
+// First remote link whose URL contains `marker` (e.g. "/merge_requests/").
+QString findLinkUrl(const QList<RemoteLink> &links, const QString &marker);
 
 struct Comment {
     QString id;
@@ -92,6 +124,9 @@ struct Issue {
     User reporter;
     QStringList labels;
     QStringList components;
+    QStringList fixVersions;
+    QString sprint;                 // resolved from a configurable custom field
+    QList<Attachment> attachments;  // only populated when the field was requested
     QDateTime created;
     QDateTime updated;
     QDate dueDate;

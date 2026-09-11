@@ -32,15 +32,15 @@ ConnectionDialog::ConnectionDialog(const Credentials &credentials, QWidget *pare
                              "include it: https://intranet.example.com/jira"));
 
     m_authMode = new QComboBox(this);
-    m_authMode->addItem(tr("Jira Server / Data Center — Personal Access Token"),
+    m_authMode->addItem(tr("Bearer token — Jira Server / Data Center personal access token"),
                         QVariant::fromValue(int(AuthMode::Bearer)));
-    m_authMode->addItem(tr("Jira Cloud — e-mail + API token"),
+    m_authMode->addItem(tr("Basic — user name or e-mail, plus password or API token"),
                         QVariant::fromValue(int(AuthMode::Basic)));
     m_authMode->setCurrentIndex(credentials.mode == AuthMode::Bearer ? 0 : 1);
 
     m_username = new QLineEdit(credentials.username, this);
-    m_username->setPlaceholderText(QStringLiteral("you@example.com"));
-    m_usernameLabel = new QLabel(tr("E-mail:"), this);
+    m_username->setPlaceholderText(tr("user name, or you@example.com on Cloud"));
+    m_usernameLabel = new QLabel(tr("User:"), this);
 
     m_token = new QLineEdit(credentials.token, this);
     m_token->setEchoMode(QLineEdit::Password);
@@ -135,12 +135,14 @@ void ConnectionDialog::updateAuthModeHints()
     m_usernameLabel->setVisible(isCloud);
 
     if (isCloud) {
-        m_hint->setText(tr("Create a token at <a href=\"https://id.atlassian.com/manage-profile/security/api-tokens\">"
-                           "id.atlassian.com</a> and pair it with the e-mail address of the account."));
+        m_hint->setText(tr("Sends <code>Authorization: Basic</code>. On Jira Cloud pair your e-mail with a token "
+                           "from <a href=\"https://id.atlassian.com/manage-profile/security/api-tokens\">"
+                           "id.atlassian.com</a>; on a self-hosted server your own user name and password work "
+                           "the same way."));
     } else {
         m_hint->setText(tr("In Jira, open <b>Profile → Personal Access Tokens → Create token</b>. "
                            "The token authenticates on its own — no user name is needed. "
-                           "Requires Jira 8.14 or newer; on an older server, choose the Cloud mode and "
+                           "Requires Jira 8.14 or newer; on an older server choose Basic above and "
                            "use your user name with your password."));
     }
     setStatus(QString(), false);

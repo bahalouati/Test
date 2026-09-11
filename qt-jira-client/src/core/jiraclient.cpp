@@ -185,6 +185,11 @@ Reply *Client::fetchMyself()
 
 Reply *Client::search(const QString &jql, int startAt, int maxResults)
 {
+    return search(jql, startAt, maxResults, QStringList());
+}
+
+Reply *Client::search(const QString &jql, int startAt, int maxResults, const QStringList &extraFields)
+{
     // POST rather than GET: JQL routinely outgrows what a proxy will accept in
     // a query string, and this sidesteps every encoding question.
     QJsonObject body;
@@ -193,7 +198,13 @@ Reply *Client::search(const QString &jql, int startAt, int maxResults)
     body.insert(QStringLiteral("maxResults"), maxResults);
 
     QJsonArray fields;
-    for (const QString &field : searchFields().split(QLatin1Char(',')))
+    QStringList names = searchFields().split(QLatin1Char(','));
+    for (const QString &extra : extraFields) {
+        const QString trimmed = extra.trimmed();
+        if (!trimmed.isEmpty() && !names.contains(trimmed))
+            names.append(trimmed);
+    }
+    for (const QString &field : names)
         fields.append(field);
     body.insert(QStringLiteral("fields"), fields);
 
@@ -276,6 +287,14 @@ Reply *Client::applyTransition(const QString &issueKey, const QString &transitio
                 restEndpoint(m_credentials.baseUrl, QStringLiteral("issue/%1/transitions").arg(issueKey)),
                 payload,
                 true);
+}
+
+Reply *Client::fetchRemoteLinks(const QString &issueKey)
+{
+    return send("GET",
+                restEndpoint(m_credentials.baseUrl, QStringLiteral("issue/%1/remotelink").arg(issueKey)),
+                {},
+                false);
 }
 
 Reply *Client::fetchProjects()

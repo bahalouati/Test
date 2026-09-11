@@ -5,7 +5,9 @@ Point it at whatever address your Jira lives at — Server, Data Center or Cloud
 under a context path or not — search with JQL, and work the issue without
 opening a browser.
 
-![The main window](docs/screenshot.png)
+![The month view](docs/month.png)
+
+*The month view: a short day is coloured and says how much is missing, so nothing has to be added up by hand.*
 
 ## Why v2
 
@@ -15,6 +17,24 @@ Atlassian Document Format, which is a JSON tree a desktop client has to render
 itself. v2 is available on Cloud too, so one code path covers every instance.
 
 ## What it does
+
+Two screens.
+
+**My month** answers *"which days am I still short on?"* — the job the
+`jira2.py` Excel report was doing:
+
+- a Mon-Fri calendar of the month, one cell per day, showing the day's total
+  and every issue booked against it
+- **green** at or above a full day, **amber** below it, **red** when hours are
+  missing, **grey** for days that have not happened yet
+- each short day says how much is missing, and the header totals it for the
+  month
+- a flat work-log table underneath with **Fix version**, **Sprint**, **Merge
+  request** and **Test sheet** per entry; the merge request and test sheet open
+  in the browser, and double-clicking an issue key jumps to it
+- **Export CSV** for the same rows
+
+**Search** is the general issue browser:
 
 - **Search** with JQL, paged, with a remembered query history and a few
   starting points for people who do not write JQL from memory
@@ -28,6 +48,23 @@ itself. v2 is available on Cloud too, so one code path covers every instance.
   are available to you
 - **Open in Jira** for anything the client does not cover
 
+## Per-instance conventions
+
+Four of the columns depend on how your Jira is set up, so they are configurable
+under **File → Timesheet settings** rather than hard-coded:
+
+| Setting | Default | What it decides |
+| --- | --- | --- |
+| Sprint field | `customfield_10005` | Which custom field holds the sprint. Leave it empty and every `customfield_*` is scanned for something sprint-shaped instead. |
+| Test sheet marker | `testsheet` | An attachment is the test sheet when its file name contains this, ignoring case. |
+| Merge request marker | `/merge_requests/` | A remote link is the merge request when its URL contains this. Use `/pull/` for GitHub; empty skips the lookup and loads the month faster. |
+| A full day is | `8 h` | The green threshold, and what a short day is measured against. |
+| Amber at or above | `6 h` | Between this and a full day the cell is amber rather than red. |
+
+Sprint values are read in both shapes Jira uses: the Java `toString()` that
+Server returns (`...,name=Sprint 12,...`) and the plain object newer instances
+return.
+
 ## Authentication
 
 Both kinds of "API token" are supported; pick the matching Jira type in the
@@ -37,9 +74,11 @@ connection dialog.
 | --- | --- | --- |
 | Server / Data Center 8.14+ | **Profile → Personal Access Tokens → Create token** | `Authorization: Bearer <token>` |
 | Cloud | [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens) | `Authorization: Basic base64(email:token)` |
+| Any Jira, no token | your own user name and password | `Authorization: Basic base64(user:password)` |
 
-On an older Server, choose the Cloud mode and use your user name and password —
-the header shape is the same.
+The two modes are labelled by the header they send, not by the hosting, because
+a self-hosted server accepts plain Basic with a user name and password just as
+Cloud accepts Basic with an e-mail and a token.
 
 **Test connection** in the dialog calls `/rest/api/2/myself` and shows you who
 Jira thinks you are, so a wrong URL or a wrong token fails there rather than
@@ -123,12 +162,16 @@ src/
     credentials.{h,cpp}     auth modes, URL normalisation, QSettings + environment
     jiraclient.{h,cpp}      async REST v2 calls, one Reply object per request
     jiratypes.{h,cpp}       payload structs and their JSON parsing
+    timesheet.{h,cpp}       grouping worklogs by day, and the short-day bands
+    timesheetloader.{h,cpp} the month pipeline, with bounded requests in flight
   ui/
     mainwindow.{h,cpp}      JQL bar, paged results, status bar
     connectiondialog.{h,cpp}  server, auth mode, token, TLS, test connection
     issuetablemodel.{h,cpp}   QAbstractTableModel over a page of results
     issuedetailwidget.{h,cpp} fields, description, comments, work log, transitions
     logworkdialog.{h,cpp}     one worklog entry
+    timesheetwidget.{h,cpp}   the month calendar and work-log table
+    timesheetsettingsdialog.{h,cpp}  the per-instance conventions above
 tests/
   tst_jiracore.cpp          the core library, offline
 ```
@@ -141,7 +184,12 @@ than another pair of signals on the client.
 
 `GET /myself` · `POST /search` · `GET /issue/{key}` ·
 `GET,POST /issue/{key}/comment` · `GET,POST /issue/{key}/worklog` ·
-`GET,POST /issue/{key}/transitions` · `GET /project`
+`GET,POST /issue/{key}/transitions` · `GET /issue/{key}/remotelink` ·
+`GET /project`
+
+The month view asks the one search for `fixVersions`, `attachment` and the
+sprint field together, so those cost no extra request; only the work log and the
+remote links need a call per issue, and at most six are ever in flight.
 
 Search is a POST rather than a GET because JQL routinely outgrows what a proxy
 will accept in a query string.
@@ -153,6 +201,13 @@ will accept in a query string.
   markup beats mangling it.
 - **No issue creation or field editing.** Reading, commenting, logging work and
   transitioning are covered; anything else is a trip to the browser.
+- **No "specifications" column.** Fix version, sprint, merge request and test
+  sheet are there; if specifications live in an attachment or a link too, it is
+  a marker away.
+- **No .xlsx export.** The month view replaces the spreadsheet on screen and
+  exports CSV; it does not write the two-sheet workbook.
+- **Weekends are ignored**, and every working day is assumed to be a full day —
+  there is no holiday or part-time calendar.
 - **A transition needing a screen field will fail**, with Jira's own message
   naming the field. Do those in the browser.
 - **Attachments are not listed or downloaded.**

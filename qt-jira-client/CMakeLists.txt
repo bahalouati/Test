@@ -28,6 +28,10 @@ add_library(jiradesk_core STATIC
     src/core/jiraclient.h
     src/core/jiratypes.cpp
     src/core/jiratypes.h
+    src/core/timesheet.cpp
+    src/core/timesheet.h
+    src/core/timesheetloader.cpp
+    src/core/timesheetloader.h
 )
 target_include_directories(jiradesk_core PUBLIC src)
 target_link_libraries(jiradesk_core PUBLIC Qt6::Core Qt6::Network)
@@ -44,6 +48,10 @@ qt_add_executable(jiradesk
     src/ui/logworkdialog.h
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
+    src/ui/timesheetsettingsdialog.cpp
+    src/ui/timesheetsettingsdialog.h
+    src/ui/timesheetwidget.cpp
+    src/ui/timesheetwidget.h
 )
 target_link_libraries(jiradesk PRIVATE jiradesk_core Qt6::Widgets)
 
