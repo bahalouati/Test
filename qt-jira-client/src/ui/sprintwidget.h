@@ -4,22 +4,27 @@
 
 #include <QWidget>
 
-class QLabel;
-class QLineEdit;
-class QPushButton;
-class QTableWidget;
+QT_BEGIN_NAMESPACE
+namespace Ui { class SprintWidget; }
+QT_END_NAMESPACE
 
 namespace jira { class Client; }
 
 // The sprint task list and its stopwatch. Tracked time stays on this machine;
 // the real worklog is still written by hand in Jira.
+//
+// The layout lives in sprintwidget.ui. The constructor takes only a parent so
+// the class can be promoted in Qt Designer; the client arrives afterwards
+// through setClient().
 class SprintWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit SprintWidget(jira::Client *client, QWidget *parent = nullptr);
+    explicit SprintWidget(QWidget *parent = nullptr);
+    ~SprintWidget() override;
 
+    void setClient(jira::Client *client);
     void setIdentity(const jira::User &me);
     void refresh();
 
@@ -39,15 +44,8 @@ private slots:
 private:
     QString selectedKey() const;
 
-    jira::Client *m_client;
+    Ui::SprintWidget *ui;
+    jira::Client *m_client = nullptr;
     jira::TaskTracker *m_tracker;
     jira::User m_me;
-
-    QLineEdit *m_jql;
-    QPushButton *m_refresh;
-    QPushButton *m_toggle;
-    QPushButton *m_markLogged;
-    QPushButton *m_remove;
-    QLabel *m_current;
-    QTableWidget *m_table;
 };

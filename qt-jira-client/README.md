@@ -184,6 +184,16 @@ No network and no credentials — nothing here talks to a Jira.
 
 ## Layout
 
+All seven screens are Qt Designer forms: each `src/ui/*.ui` opens in Designer,
+and AUTOUIC turns it into a `ui_*.h` the matching `.cpp` includes. Layout,
+labels, tooltips and shortcuts are edited in Designer; the `.cpp` files hold
+behaviour only.
+
+Three widgets — `IssueDetailWidget`, `SprintWidget` and `TimesheetWidget` — are
+promoted inside `mainwindow.ui`, so each takes only a parent in its constructor
+and receives the Jira client afterwards through `setClient()`. That is what lets
+Designer instantiate them.
+
 ```
 src/
   main.cpp                  application set-up, --jql

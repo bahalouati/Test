@@ -6,25 +6,28 @@
 #include <QDate>
 #include <QWidget>
 
-class QComboBox;
-class QLabel;
-class QProgressBar;
-class QPushButton;
-class QTableWidget;
-class QTableWidgetItem;
+QT_BEGIN_NAMESPACE
+namespace Ui { class TimesheetWidget; }
+QT_END_NAMESPACE
 
 namespace jira { class Client; }
 
 // The month view: a Mon-Fri calendar where a short day is coloured, plus the
 // flat worklog table underneath it. This is the screen that answers "which days
 // am I still missing hours on?" without adding anything up by hand.
+//
+// The layout lives in timesheetwidget.ui. The constructor takes only a parent
+// so the class can be promoted in Qt Designer; the client arrives afterwards
+// through setClient().
 class TimesheetWidget : public QWidget
 {
     Q_OBJECT
 
 public:
-    explicit TimesheetWidget(jira::Client *client, QWidget *parent = nullptr);
+    explicit TimesheetWidget(QWidget *parent = nullptr);
+    ~TimesheetWidget() override;
 
+    void setClient(jira::Client *client);
     void setIdentity(const jira::User &me);
     void refresh();
 
@@ -49,22 +52,13 @@ private:
     QDate firstOfMonth() const;
     QDate lastOfMonth() const;
 
-    jira::Client *m_client;
-    jira::TimesheetLoader *m_loader;
+    Ui::TimesheetWidget *ui;
+    jira::Client *m_client = nullptr;
+    jira::TimesheetLoader *m_loader = nullptr;
     jira::TimesheetSettings m_settings;
     jira::User m_me;
 
     QList<jira::TimesheetEntry> m_entries;
     QList<jira::DaySummary> m_days;
 
-    QComboBox *m_month;
-    QComboBox *m_year;
-    QPushButton *m_refresh;
-    QPushButton *m_export;
-    QPushButton *m_exportXlsx;
-    QLabel *m_summary;
-    QLabel *m_legend;
-    QProgressBar *m_progress;
-    QTableWidget *m_calendar;
-    QTableWidget *m_table;
 };

@@ -1,4 +1,5 @@
 #include "sprintwidget.h"
+#include "ui_sprintwidget.h"
 
 #include "core/jiraclient.h"
 
@@ -26,75 +27,29 @@ constexpr auto kDefaultJql = "assignee = currentUser() AND sprint in openSprints
 enum Column { KeyColumn, SummaryColumn, SprintColumn, StatusColumn, TrackedColumn, ColumnCount };
 } // namespace
 
-SprintWidget::SprintWidget(jira::Client *client, QWidget *parent)
+SprintWidget::SprintWidget(QWidget *parent)
     : QWidget(parent)
-    , m_client(client)
+    , ui(new Ui::SprintWidget)
     , m_tracker(new jira::TaskTracker(this))
 {
-    m_jql = new QLineEdit(this);
-    m_jql->setText(QSettings().value(QLatin1String(kSprintJqlKey), QLatin1String(kDefaultJql)).toString());
-    m_jql->setToolTip(tr("Which issues belong on this list. A task drops off it when Jira stops "
-                         "assigning the issue to you."));
+    ui->setupUi(this);
 
-    m_refresh = new QPushButton(tr("Refresh"), this);
-    m_toggle = new QPushButton(tr("Start"), this);
-    m_toggle->setEnabled(false);
-    m_markLogged = new QPushButton(tr("Mark logged"), this);
-    m_markLogged->setEnabled(false);
-    m_markLogged->setToolTip(tr("Clears the tracked time once you have written the real worklog "
-                                "into Jira yourself."));
-    m_remove = new QPushButton(tr("Remove"), this);
-    m_remove->setEnabled(false);
+    ui->jql->setText(QSettings().value(QLatin1String(kSprintJqlKey),
+                                       QLatin1String(kDefaultJql)).toString());
+    ui->table->horizontalHeader()->setSectionResizeMode(SummaryColumn, QHeaderView::Stretch);
 
-    auto *controls = new QHBoxLayout;
-    controls->addWidget(new QLabel(tr("Sprint filter:"), this));
-    controls->addWidget(m_jql, 1);
-    controls->addWidget(m_refresh);
-
-    m_current = new QLabel(this);
-    m_current->setTextFormat(Qt::RichText);
-
-    auto *actions = new QHBoxLayout;
-    actions->addWidget(m_toggle);
-    actions->addWidget(m_markLogged);
-    actions->addWidget(m_remove);
-    actions->addStretch();
-    actions->addWidget(m_current);
-
-    m_table = new QTableWidget(0, ColumnCount, this);
-    m_table->setHorizontalHeaderLabels({tr("Issue"), tr("Summary"), tr("Sprint"),
-                                        tr("Status"), tr("Tracked")});
-    m_table->verticalHeader()->setVisible(false);
-    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_table->setAlternatingRowColors(true);
-    m_table->horizontalHeader()->setSectionResizeMode(SummaryColumn, QHeaderView::Stretch);
-
-    auto *note = new QLabel(tr("Tracked time is kept on this computer only — nothing is written to "
-                               "Jira. Log the real figure yourself, then use <b>Mark logged</b> to "
-                               "clear it."), this);
-    note->setWordWrap(true);
-    note->setStyleSheet(QStringLiteral("color: gray;"));
-
-    auto *layout = new QVBoxLayout(this);
-    layout->addLayout(controls);
-    layout->addLayout(actions);
-    layout->addWidget(m_table, 1);
-    layout->addWidget(note);
-
-    connect(m_refresh, &QPushButton::clicked, this, &SprintWidget::refresh);
-    connect(m_toggle, &QPushButton::clicked, this, &SprintWidget::toggleSelected);
-    connect(m_markLogged, &QPushButton::clicked, this, &SprintWidget::markLogged);
-    connect(m_remove, &QPushButton::clicked, this, &SprintWidget::removeSelected);
-    connect(m_table, &QTableWidget::itemSelectionChanged, this, &SprintWidget::selectionChanged);
-    connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
-        QTableWidgetItem *item = m_table->item(row, KeyColumn);
+    connect(ui->refresh, &QPushButton::clicked, this, &SprintWidget::refresh);
+    connect(ui->toggle, &QPushButton::clicked, this, &SprintWidget::toggleSelected);
+    connect(ui->markLogged, &QPushButton::clicked, this, &SprintWidget::markLogged);
+    connect(ui->remove, &QPushButton::clicked, this, &SprintWidget::removeSelected);
+    connect(ui->table, &QTableWidget::itemSelectionChanged, this, &SprintWidget::selectionChanged);
+    connect(ui->table, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+        QTableWidgetItem *item = ui->table->item(row, KeyColumn);
         if (item)
             emit issueActivated(item->text());
     });
-    connect(m_jql, &QLineEdit::editingFinished, this, [this] {
-        QSettings().setValue(QLatin1String(kSprintJqlKey), m_jql->text().trimmed());
+    connect(ui->jql, &QLineEdit::editingFinished, this, [this] {
+        QSettings().setValue(QLatin1String(kSprintJqlKey), ui->jql->text().trimmed());
     });
 
     connect(m_tracker, &jira::TaskTracker::changed, this, &SprintWidget::rebuild);
@@ -104,6 +59,16 @@ SprintWidget::SprintWidget(jira::Client *client, QWidget *parent)
     rebuild();
 }
 
+SprintWidget::~SprintWidget()
+{
+    delete ui;
+}
+
+void SprintWidget::setClient(jira::Client *client)
+{
+    m_client = client;
+}
+
 void SprintWidget::setIdentity(const jira::User &me)
 {
     m_me = me;
@@ -111,30 +76,30 @@ void SprintWidget::setIdentity(const jira::User &me)
 
 QString SprintWidget::selectedKey() const
 {
-    const int row = m_table->currentRow();
+    const int row = ui->table->currentRow();
     if (row < 0)
         return {};
-    QTableWidgetItem *item = m_table->item(row, KeyColumn);
+    QTableWidgetItem *item = ui->table->item(row, KeyColumn);
     return item ? item->text() : QString();
 }
 
 void SprintWidget::refresh()
 {
-    if (!m_client->isConfigured()) {
+    if (!m_client || !m_client->isConfigured()) {
         emit errorOccurred(tr("Connect to a Jira server first."));
         return;
     }
 
-    const QString jql = m_jql->text().trimmed();
+    const QString jql = ui->jql->text().trimmed();
     if (jql.isEmpty()) {
         emit errorOccurred(tr("Enter a filter for the sprint first."));
         return;
     }
 
-    m_refresh->setEnabled(false);
+    ui->refresh->setEnabled(false);
     jira::Reply *reply = m_client->search(jql, 0, 100);
     connect(reply, &jira::Reply::succeeded, this, [this](const QJsonValue &body) {
-        m_refresh->setEnabled(true);
+        ui->refresh->setEnabled(true);
         const jira::SearchResult result = jira::SearchResult::fromJson(body.toObject());
 
         // "Done" means Jira no longer assigns it to me, so the assignee on each
@@ -157,10 +122,10 @@ void SprintWidget::refresh()
         emit statusMessage(tr("%1 task(s) in the sprint.").arg(stillMine.size()));
     });
     connect(reply, &jira::Reply::failed, this, [this](const jira::Error &error) {
-        m_refresh->setEnabled(true);
+        ui->refresh->setEnabled(true);
         // openSprints() needs Jira Software; say so rather than showing a raw 400.
         QString message = error.toString();
-        if (error.httpStatus == 400 && m_jql->text().contains(QLatin1String("openSprints"))) {
+        if (error.httpStatus == 400 && ui->jql->text().contains(QLatin1String("openSprints"))) {
             message += QLatin1Char('\n')
                     + tr("If this instance has no Jira Software, replace the filter with one that "
                          "does not use openSprints(), for example: "
@@ -175,15 +140,15 @@ void SprintWidget::rebuild()
     const QString selected = selectedKey();
     const QList<TrackedTask> tasks = m_tracker->tasks();
 
-    m_table->setRowCount(tasks.size());
+    ui->table->setRowCount(tasks.size());
     for (int row = 0; row < tasks.size(); ++row) {
         const TrackedTask &task = tasks.at(row);
 
         const auto set = [this, row](int column, const QString &text) {
-            auto *item = m_table->item(row, column);
+            auto *item = ui->table->item(row, column);
             if (!item) {
                 item = new QTableWidgetItem;
-                m_table->setItem(row, column, item);
+                ui->table->setItem(row, column, item);
             }
             item->setText(text);
             return item;
@@ -214,22 +179,22 @@ void SprintWidget::rebuild()
         tracked->setForeground(task.isRunning() ? QColor(QStringLiteral("#1e7d32")) : QColor());
     }
 
-    m_table->resizeColumnsToContents();
-    m_table->horizontalHeader()->setSectionResizeMode(SummaryColumn, QHeaderView::Stretch);
+    ui->table->resizeColumnsToContents();
+    ui->table->horizontalHeader()->setSectionResizeMode(SummaryColumn, QHeaderView::Stretch);
 
     if (!selected.isEmpty()) {
         const int index = m_tracker->indexOf(selected);
         if (index >= 0)
-            m_table->selectRow(index);
+            ui->table->selectRow(index);
     }
 
     const TrackedTask current = m_tracker->currentTask();
     if (current.isRunning()) {
-        m_current->setText(tr("<b>%1</b> running — %2")
+        ui->current->setText(tr("<b>%1</b> running — %2")
                                    .arg(current.issueKey.toHtmlEscaped(),
                                         jira::formatStopwatch(current.elapsedSeconds())));
     } else {
-        m_current->setText(tr("<span style='color:gray;'>No task running</span>"));
+        ui->current->setText(tr("<span style='color:gray;'>No task running</span>"));
     }
     selectionChanged();
 }
@@ -237,15 +202,15 @@ void SprintWidget::rebuild()
 void SprintWidget::updateElapsed()
 {
     const QList<TrackedTask> tasks = m_tracker->tasks();
-    for (int row = 0; row < tasks.size() && row < m_table->rowCount(); ++row) {
-        QTableWidgetItem *item = m_table->item(row, TrackedColumn);
+    for (int row = 0; row < tasks.size() && row < ui->table->rowCount(); ++row) {
+        QTableWidgetItem *item = ui->table->item(row, TrackedColumn);
         if (item)
             item->setText(jira::formatStopwatch(tasks.at(row).elapsedSeconds()));
     }
 
     const TrackedTask current = m_tracker->currentTask();
     if (current.isRunning()) {
-        m_current->setText(tr("<b>%1</b> running — %2")
+        ui->current->setText(tr("<b>%1</b> running — %2")
                                    .arg(current.issueKey.toHtmlEscaped(),
                                         jira::formatStopwatch(current.elapsedSeconds())));
     }
@@ -261,10 +226,10 @@ void SprintWidget::selectionChanged()
     const int index = key.isEmpty() ? -1 : m_tracker->indexOf(key);
     const bool hasSelection = index >= 0;
 
-    m_toggle->setEnabled(hasSelection);
-    m_remove->setEnabled(hasSelection);
-    m_markLogged->setEnabled(hasSelection && m_tracker->tasks().at(index).elapsedSeconds() > 0);
-    m_toggle->setText(hasSelection && m_tracker->tasks().at(index).isRunning() ? tr("Stop")
+    ui->toggle->setEnabled(hasSelection);
+    ui->remove->setEnabled(hasSelection);
+    ui->markLogged->setEnabled(hasSelection && m_tracker->tasks().at(index).elapsedSeconds() > 0);
+    ui->toggle->setText(hasSelection && m_tracker->tasks().at(index).isRunning() ? tr("Stop")
                                                                               : tr("Start"));
 }
 

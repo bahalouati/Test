@@ -42,24 +42,33 @@ add_library(jiradesk_core STATIC
 target_include_directories(jiradesk_core PUBLIC src)
 target_link_libraries(jiradesk_core PUBLIC Qt6::Core Qt6::Network)
 
+# The .ui files are Qt Designer forms; AUTOUIC turns each into a ui_*.h that the
+# matching .cpp includes. Listing them here keeps them visible in IDEs too.
 qt_add_executable(jiradesk
     src/main.cpp
     src/ui/connectiondialog.cpp
     src/ui/connectiondialog.h
+    src/ui/connectiondialog.ui
     src/ui/issuedetailwidget.cpp
     src/ui/issuedetailwidget.h
+    src/ui/issuedetailwidget.ui
     src/ui/issuetablemodel.cpp
     src/ui/issuetablemodel.h
     src/ui/logworkdialog.cpp
     src/ui/logworkdialog.h
+    src/ui/logworkdialog.ui
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
+    src/ui/mainwindow.ui
     src/ui/sprintwidget.cpp
     src/ui/sprintwidget.h
+    src/ui/sprintwidget.ui
     src/ui/timesheetsettingsdialog.cpp
     src/ui/timesheetsettingsdialog.h
+    src/ui/timesheetsettingsdialog.ui
     src/ui/timesheetwidget.cpp
     src/ui/timesheetwidget.h
+    src/ui/timesheetwidget.ui
 )
 target_link_libraries(jiradesk PRIVATE jiradesk_core Qt6::Widgets)
 

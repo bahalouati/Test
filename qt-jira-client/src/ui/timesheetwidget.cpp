@@ -1,4 +1,5 @@
 #include "timesheetwidget.h"
+#include "ui_timesheetwidget.h"
 
 #include "core/jiraclient.h"
 #include "core/timesheetexport.h"
@@ -55,103 +56,58 @@ QString csvField(const QString &value)
 
 } // namespace
 
-TimesheetWidget::TimesheetWidget(jira::Client *client, QWidget *parent)
+TimesheetWidget::TimesheetWidget(QWidget *parent)
     : QWidget(parent)
-    , m_client(client)
-    , m_loader(new jira::TimesheetLoader(client, this))
+    , ui(new Ui::TimesheetWidget)
     , m_settings(jira::TimesheetSettings::load())
 {
+    ui->setupUi(this);
+
     const QDate today = QDate::currentDate();
 
-    m_month = new QComboBox(this);
+    // Populated here rather than in the .ui: the entries are locale month names
+    // and a window of years around today, and each carries its value as data.
     for (int month = 1; month <= 12; ++month)
-        m_month->addItem(QLocale().monthName(month), month);
-    m_month->setCurrentIndex(today.month() - 1);
+        ui->month->addItem(QLocale().monthName(month), month);
+    ui->month->setCurrentIndex(today.month() - 1);
 
-    m_year = new QComboBox(this);
     for (int year = today.year() - 3; year <= today.year() + 1; ++year)
-        m_year->addItem(QString::number(year), year);
-    m_year->setCurrentText(QString::number(today.year()));
+        ui->year->addItem(QString::number(year), year);
+    ui->year->setCurrentText(QString::number(today.year()));
 
-    m_refresh = new QPushButton(tr("Refresh"), this);
-    m_export = new QPushButton(tr("Export CSV…"), this);
-    m_export->setEnabled(false);
-    m_exportXlsx = new QPushButton(tr("Export Excel…"), this);
-    m_exportXlsx->setEnabled(false);
-    m_exportXlsx->setToolTip(tr("The two-sheet workbook: a flat work log, and the colour-banded "
-                                "calendar for the month."));
+    ui->progress->setVisible(false);
+    ui->calendar->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
 
-    m_progress = new QProgressBar(this);
-    m_progress->setVisible(false);
-    m_progress->setMaximumWidth(220);
-
-    auto *controls = new QHBoxLayout;
-    controls->addWidget(new QLabel(tr("Month:"), this));
-    controls->addWidget(m_month);
-    controls->addWidget(m_year);
-    controls->addWidget(m_refresh);
-    controls->addSpacing(12);
-    controls->addWidget(m_progress);
-    controls->addStretch();
-    controls->addWidget(m_export);
-    controls->addWidget(m_exportXlsx);
-
-    m_summary = new QLabel(this);
-    m_summary->setTextFormat(Qt::RichText);
-    m_summary->setWordWrap(true);
-
-    m_legend = new QLabel(this);
-    m_legend->setTextFormat(Qt::RichText);
-    m_legend->setText(tr("<span style='background:#C6EFCE;'>&nbsp;full day&nbsp;</span> &nbsp; "
-                         "<span style='background:#FFF2CC;'>&nbsp;under a full day&nbsp;</span> &nbsp; "
-                         "<span style='background:#FFC7CE;'>&nbsp;missing hours&nbsp;</span> &nbsp; "
-                         "<span style='background:#D9D9D9;'>&nbsp;upcoming&nbsp;</span>"));
-
-    m_calendar = new QTableWidget(0, 5, this);
-    m_calendar->setHorizontalHeaderLabels({tr("Monday"), tr("Tuesday"), tr("Wednesday"),
-                                           tr("Thursday"), tr("Friday")});
-    m_calendar->verticalHeader()->setVisible(false);
-    m_calendar->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_calendar->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_calendar->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
-    m_calendar->setWordWrap(true);
-
-    m_table = new QTableWidget(0, 9, this);
-    m_table->setHorizontalHeaderLabels({tr("Date"), tr("Issue"), tr("Summary"), tr("Fix version"),
-                                        tr("Sprint"), tr("Merge request"), tr("Test sheet"),
-                                        tr("Hours"), tr("Work description")});
-    m_table->verticalHeader()->setVisible(false);
-    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setAlternatingRowColors(true);
-    m_table->setSortingEnabled(true);
-
-    auto *layout = new QVBoxLayout(this);
-    layout->addLayout(controls);
-    layout->addWidget(m_summary);
-    layout->addWidget(m_legend);
-    layout->addWidget(m_calendar, 3);
-    layout->addWidget(m_table, 2);
-
-    connect(m_refresh, &QPushButton::clicked, this, &TimesheetWidget::refresh);
-    connect(m_export, &QPushButton::clicked, this, &TimesheetWidget::exportCsv);
-    connect(m_exportXlsx, &QPushButton::clicked, this, &TimesheetWidget::exportXlsx);
-    connect(m_month, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
-    connect(m_year, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
-    connect(m_calendar, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
-    connect(m_table, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
-
-    connect(m_loader, &jira::TimesheetLoader::finished, this, &TimesheetWidget::loadFinished);
-    connect(m_loader, &jira::TimesheetLoader::failed, this, &TimesheetWidget::loadFailed);
-    connect(m_loader, &jira::TimesheetLoader::progress, this, &TimesheetWidget::loadProgress);
+    connect(ui->refresh, &QPushButton::clicked, this, &TimesheetWidget::refresh);
+    connect(ui->exportCsv, &QPushButton::clicked, this, &TimesheetWidget::exportCsv);
+    connect(ui->exportXlsx, &QPushButton::clicked, this, &TimesheetWidget::exportXlsx);
+    connect(ui->month, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
+    connect(ui->year, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
+    connect(ui->calendar, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
+    connect(ui->table, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
 
     buildCalendar();
     updateSummary();
 }
 
+TimesheetWidget::~TimesheetWidget()
+{
+    delete ui;
+}
+
+void TimesheetWidget::setClient(jira::Client *client)
+{
+    m_client = client;
+    delete m_loader;
+    m_loader = new jira::TimesheetLoader(client, this);
+    connect(m_loader, &jira::TimesheetLoader::finished, this, &TimesheetWidget::loadFinished);
+    connect(m_loader, &jira::TimesheetLoader::failed, this, &TimesheetWidget::loadFailed);
+    connect(m_loader, &jira::TimesheetLoader::progress, this, &TimesheetWidget::loadProgress);
+}
+
 QDate TimesheetWidget::firstOfMonth() const
 {
-    return QDate(m_year->currentData().toInt(), m_month->currentData().toInt(), 1);
+    return QDate(ui->year->currentData().toInt(), ui->month->currentData().toInt(), 1);
 }
 
 QDate TimesheetWidget::lastOfMonth() const
@@ -175,43 +131,43 @@ void TimesheetWidget::monthChanged()
 
 void TimesheetWidget::refresh()
 {
-    if (!m_client->isConfigured()) {
+    if (!m_client || !m_loader || !m_client->isConfigured()) {
         emit errorOccurred(tr("Connect to a Jira server first."));
         return;
     }
     m_settings = jira::TimesheetSettings::load();
-    m_refresh->setEnabled(false);
-    m_progress->setVisible(true);
-    m_progress->setRange(0, 0);
+    ui->refresh->setEnabled(false);
+    ui->progress->setVisible(true);
+    ui->progress->setRange(0, 0);
     m_loader->load(firstOfMonth(), lastOfMonth(), m_me, m_settings);
 }
 
 void TimesheetWidget::loadProgress(int done, int total, const QString &message)
 {
-    m_progress->setVisible(true);
+    ui->progress->setVisible(true);
     if (total > 0) {
-        m_progress->setRange(0, total);
-        m_progress->setValue(done);
+        ui->progress->setRange(0, total);
+        ui->progress->setValue(done);
     } else {
-        m_progress->setRange(0, 0);
+        ui->progress->setRange(0, 0);
     }
     emit statusMessage(message);
 }
 
 void TimesheetWidget::loadFailed(const QString &message)
 {
-    m_refresh->setEnabled(true);
-    m_progress->setVisible(false);
+    ui->refresh->setEnabled(true);
+    ui->progress->setVisible(false);
     emit errorOccurred(message);
 }
 
 void TimesheetWidget::loadFinished(const QList<TimesheetEntry> &entries)
 {
-    m_refresh->setEnabled(true);
-    m_progress->setVisible(false);
+    ui->refresh->setEnabled(true);
+    ui->progress->setVisible(false);
     m_entries = entries;
-    m_export->setEnabled(!entries.isEmpty());
-    m_exportXlsx->setEnabled(!entries.isEmpty());
+    ui->exportCsv->setEnabled(!entries.isEmpty());
+    ui->exportXlsx->setEnabled(!entries.isEmpty());
 
     buildCalendar();
     buildTable();
@@ -228,8 +184,8 @@ void TimesheetWidget::buildCalendar()
     // Lay the month out as weeks of Mon-Fri, the way the Excel calendar reads.
     const int leading = first.dayOfWeek() - 1;           // Monday == 0
     const int weeks = (leading + last.day() + 6) / 7;
-    m_calendar->clearContents();
-    m_calendar->setRowCount(qMax(1, weeks));
+    ui->calendar->clearContents();
+    ui->calendar->setRowCount(qMax(1, weeks));
 
     QHash<QDate, DaySummary> byDay;
     for (const DaySummary &day : std::as_const(m_days))
@@ -265,16 +221,16 @@ void TimesheetWidget::buildCalendar()
         item->setForeground(QColor(QStringLiteral("#1a1a1a")));
         item->setData(Qt::UserRole, day);
         item->setToolTip(jira::dayStatusLabel(summary.status));
-        m_calendar->setItem(row, column, item);
+        ui->calendar->setItem(row, column, item);
     }
 
-    m_calendar->resizeRowsToContents();
+    ui->calendar->resizeRowsToContents();
 }
 
 void TimesheetWidget::buildTable()
 {
-    m_table->setSortingEnabled(false);
-    m_table->setRowCount(m_entries.size());
+    ui->table->setSortingEnabled(false);
+    ui->table->setRowCount(m_entries.size());
 
     QList<TimesheetEntry> sorted = m_entries;
     std::sort(sorted.begin(), sorted.end(), [](const TimesheetEntry &a, const TimesheetEntry &b) {
@@ -288,7 +244,7 @@ void TimesheetWidget::buildTable()
         const TimesheetEntry &entry = sorted.at(row);
         const auto set = [this, row](int column, const QString &text) {
             auto *item = new QTableWidgetItem(text);
-            m_table->setItem(row, column, item);
+            ui->table->setItem(row, column, item);
             return item;
         };
 
@@ -316,9 +272,9 @@ void TimesheetWidget::buildTable()
         set(8, entry.comment);
     }
 
-    m_table->setSortingEnabled(true);
-    m_table->resizeColumnsToContents();
-    m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
+    ui->table->setSortingEnabled(true);
+    ui->table->resizeColumnsToContents();
+    ui->table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
 }
 
 void TimesheetWidget::updateSummary()
@@ -346,7 +302,7 @@ void TimesheetWidget::updateSummary()
     text += tr("<br/><span style='color:gray;'>A full day is %1 h; below %2 h counts as short.</span>")
                     .arg(formatHours(m_settings.rules.fullDayHours))
                     .arg(formatHours(m_settings.rules.partialDayHours));
-    m_summary->setText(text);
+    ui->summary->setText(text);
 }
 
 void TimesheetWidget::cellActivated(int row, int column)
@@ -364,7 +320,7 @@ void TimesheetWidget::cellActivated(int row, int column)
         QDesktopServices::openUrl(QUrl(text));
         return;
     }
-    if (table == m_table && column == 1 && !text.isEmpty())
+    if (table == ui->table && column == 1 && !text.isEmpty())
         emit issueActivated(text);
 }
 
