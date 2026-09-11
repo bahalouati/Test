@@ -21,6 +21,13 @@ endpoint shapes; see the module docstring for what to ask your Sciforma admin.
 Filling it in is a config change (`sink.kind`) for everyone else — no pipeline
 code moves.
 
+## Desktop client
+
+`qt-jira-client/` is a standalone Qt 6 desktop client for Jira — JQL search,
+issue detail, comments, work logging and workflow transitions, against any
+instance over the REST API v2 with an API token. It shares no code with the
+sync job; see [`qt-jira-client/README.md`](qt-jira-client/README.md).
+
 ## Quick start
 
 ```bash
