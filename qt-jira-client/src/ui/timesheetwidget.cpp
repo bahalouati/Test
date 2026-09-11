@@ -1,6 +1,7 @@
 #include "timesheetwidget.h"
 
 #include "core/jiraclient.h"
+#include "core/timesheetexport.h"
 
 #include <QComboBox>
 #include <QDesktopServices>
@@ -75,6 +76,10 @@ TimesheetWidget::TimesheetWidget(jira::Client *client, QWidget *parent)
     m_refresh = new QPushButton(tr("Refresh"), this);
     m_export = new QPushButton(tr("Export CSV…"), this);
     m_export->setEnabled(false);
+    m_exportXlsx = new QPushButton(tr("Export Excel…"), this);
+    m_exportXlsx->setEnabled(false);
+    m_exportXlsx->setToolTip(tr("The two-sheet workbook: a flat work log, and the colour-banded "
+                                "calendar for the month."));
 
     m_progress = new QProgressBar(this);
     m_progress->setVisible(false);
@@ -89,6 +94,7 @@ TimesheetWidget::TimesheetWidget(jira::Client *client, QWidget *parent)
     controls->addWidget(m_progress);
     controls->addStretch();
     controls->addWidget(m_export);
+    controls->addWidget(m_exportXlsx);
 
     m_summary = new QLabel(this);
     m_summary->setTextFormat(Qt::RichText);
@@ -129,6 +135,7 @@ TimesheetWidget::TimesheetWidget(jira::Client *client, QWidget *parent)
 
     connect(m_refresh, &QPushButton::clicked, this, &TimesheetWidget::refresh);
     connect(m_export, &QPushButton::clicked, this, &TimesheetWidget::exportCsv);
+    connect(m_exportXlsx, &QPushButton::clicked, this, &TimesheetWidget::exportXlsx);
     connect(m_month, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
     connect(m_year, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
     connect(m_calendar, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
@@ -204,6 +211,7 @@ void TimesheetWidget::loadFinished(const QList<TimesheetEntry> &entries)
     m_progress->setVisible(false);
     m_entries = entries;
     m_export->setEnabled(!entries.isEmpty());
+    m_exportXlsx->setEnabled(!entries.isEmpty());
 
     buildCalendar();
     buildTable();
@@ -358,6 +366,23 @@ void TimesheetWidget::cellActivated(int row, int column)
     }
     if (table == m_table && column == 1 && !text.isEmpty())
         emit issueActivated(text);
+}
+
+void TimesheetWidget::exportXlsx()
+{
+    const QDate month = firstOfMonth();
+    const QString path = QFileDialog::getSaveFileName(
+            this, tr("Export work log"), jira::suggestedWorkbookName(month),
+            tr("Excel workbooks (*.xlsx)"));
+    if (path.isEmpty())
+        return;
+
+    QString error;
+    if (!jira::exportTimesheetWorkbook(path, m_entries, m_days, month, m_settings.rules, &error)) {
+        emit errorOccurred(tr("Could not write %1: %2").arg(path, error));
+        return;
+    }
+    emit statusMessage(tr("Wrote %1 rows to %2.").arg(m_entries.size()).arg(path));
 }
 
 void TimesheetWidget::exportCsv()

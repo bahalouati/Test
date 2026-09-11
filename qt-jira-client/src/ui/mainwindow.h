@@ -6,6 +6,7 @@
 #include <QMainWindow>
 
 class IssueDetailWidget;
+class SprintWidget;
 class TimesheetWidget;
 class IssueTableModel;
 class QComboBox;
@@ -61,6 +62,7 @@ private:
     QSortFilterProxyModel *m_proxy;
     IssueDetailWidget *m_detail;
     TimesheetWidget *m_timesheet;
+    SprintWidget *m_sprint;
     QTabWidget *m_tabs;
 
     QComboBox *m_jql;

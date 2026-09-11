@@ -32,6 +32,12 @@ add_library(jiradesk_core STATIC
     src/core/timesheet.h
     src/core/timesheetloader.cpp
     src/core/timesheetloader.h
+    src/core/timesheetexport.cpp
+    src/core/timesheetexport.h
+    src/core/tasktracker.cpp
+    src/core/tasktracker.h
+    src/core/xlsxwriter.cpp
+    src/core/xlsxwriter.h
 )
 target_include_directories(jiradesk_core PUBLIC src)
 target_link_libraries(jiradesk_core PUBLIC Qt6::Core Qt6::Network)
@@ -48,6 +54,8 @@ qt_add_executable(jiradesk
     src/ui/logworkdialog.h
     src/ui/mainwindow.cpp
     src/ui/mainwindow.h
+    src/ui/sprintwidget.cpp
+    src/ui/sprintwidget.h
     src/ui/timesheetsettingsdialog.cpp
     src/ui/timesheetsettingsdialog.h
     src/ui/timesheetwidget.cpp

@@ -39,6 +39,7 @@ private slots:
     void loadFailed(const QString &message);
     void loadProgress(int done, int total, const QString &message);
     void exportCsv();
+    void exportXlsx();
     void cellActivated(int row, int column);
 
 private:
@@ -60,6 +61,7 @@ private:
     QComboBox *m_year;
     QPushButton *m_refresh;
     QPushButton *m_export;
+    QPushButton *m_exportXlsx;
     QLabel *m_summary;
     QLabel *m_legend;
     QProgressBar *m_progress;

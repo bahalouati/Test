@@ -5,6 +5,7 @@
 #include "issuedetailwidget.h"
 #include "issuetablemodel.h"
 #include "timesheetsettingsdialog.h"
+#include "sprintwidget.h"
 #include "timesheetwidget.h"
 
 #include <QAction>
@@ -146,8 +147,16 @@ void MainWindow::setupUi()
         statusBar()->showMessage(message, 6000);
     });
 
+    m_sprint = new SprintWidget(m_client, this);
+    connect(m_sprint, &SprintWidget::errorOccurred, this, &MainWindow::showError);
+    connect(m_sprint, &SprintWidget::issueActivated, this, &MainWindow::openIssueByKey);
+    connect(m_sprint, &SprintWidget::statusMessage, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 6000);
+    });
+
     m_tabs = new QTabWidget(this);
     m_tabs->addTab(splitter, tr("Search"));
+    m_tabs->addTab(m_sprint, tr("Sprint"));
     m_tabs->addTab(m_timesheet, tr("My month"));
     setCentralWidget(m_tabs);
 
@@ -286,6 +295,8 @@ void MainWindow::verifyIdentity()
         m_connectionLabel->setText(tr("%1 on %2").arg(me.label(), host));
         m_timesheet->setIdentity(me);
         m_timesheet->refresh();
+        m_sprint->setIdentity(me);
+        m_sprint->refresh();
     });
     connect(reply, &jira::Reply::failed, this, [this, host](const jira::Error &error) {
         m_connectionLabel->setText(tr("Not connected to %1").arg(host));
