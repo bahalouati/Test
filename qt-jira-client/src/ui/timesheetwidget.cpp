@@ -12,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMessageBox>
 #include <QLocale>
 #include <QProgressBar>
 #include <QPushButton>
@@ -282,8 +283,13 @@ void TimesheetWidget::buildTable()
         set(SprintColumn, entry.sprint.isEmpty() ? dash : entry.sprint);
         set(FixVersionColumn, entry.fixVersions.isEmpty() ? dash : entry.fixVersions);
 
+        // The host, not a bare "open": a remote link is set by whoever can edit
+        // the issue, so the destination has to be visible without hovering.
+        const QString mrHost = QUrl(entry.mergeRequestUrl).host();
         QTableWidgetItem *mr = set(MergeRequestColumn,
-                                   entry.hasMergeRequest() ? tr("open") : dash);
+                                   entry.hasMergeRequest()
+                                           ? (mrHost.isEmpty() ? tr("open") : mrHost)
+                                           : dash);
         if (entry.hasMergeRequest()) {
             mr->setData(Qt::UserRole, entry.mergeRequestUrl);
             mr->setForeground(QColor(QStringLiteral("#0b66c3")));
@@ -404,11 +410,33 @@ void TimesheetWidget::cellActivated(int row, int column)
     const QVariant payload = item->data(Qt::UserRole);
     const QString text = payload.toString();
     if (text.startsWith(QLatin1String("http"))) {
-        QDesktopServices::openUrl(QUrl(text));
+        openLink(QUrl(text));
         return;
     }
     if (table == ui->table && column == IssueColumn && !text.isEmpty())
         emit issueActivated(text);
+}
+
+void TimesheetWidget::openLink(const QUrl &url)
+{
+    if (!url.isValid())
+        return;
+
+    // Anything pointing away from the configured Jira is confirmed first, with
+    // the address shown: the URL came out of an issue someone else may have
+    // edited, and only the host gives that away.
+    const QString instance = QUrl(m_client ? m_client->credentials().baseUrl : QString()).host();
+    if (!instance.isEmpty() && url.host().compare(instance, Qt::CaseInsensitive) != 0) {
+        const QMessageBox::StandardButton answer = QMessageBox::question(
+                this, tr("Open a link outside Jira"),
+                tr("This link leaves %1 and goes to:\n\n%2\n\nIt came from the issue, so it is "
+                   "whatever was put there. Open it?")
+                        .arg(instance, url.toString()),
+                QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return;
+    }
+    QDesktopServices::openUrl(url);
 }
 
 void TimesheetWidget::exportXlsx()

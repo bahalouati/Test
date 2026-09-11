@@ -41,12 +41,27 @@ namespace {
 
 QString csvField(const QString &value)
 {
-    QString escaped = value;
+    // Quoting alone does not help: Excel strips the quotes and then evaluates
+    // anything that begins like a formula. An apostrophe in front makes the
+    // cell text, and is not displayed.
+    QString escaped = startsSpreadsheetFormula(value) ? QLatin1Char('\'') + value : value;
     escaped.replace(QLatin1Char('"'), QLatin1String("\"\""));
     return QLatin1Char('"') + escaped + QLatin1Char('"');
 }
 
 } // namespace
+
+bool startsSpreadsheetFormula(const QString &value)
+{
+    if (value.isEmpty())
+        return false;
+    // Excel and LibreOffice both treat these as the start of a formula, and the
+    // DDE form of one can launch a program. Every value here came from Jira,
+    // where anyone who can edit an issue chooses the text.
+    const QChar first = value.at(0);
+    return first == QLatin1Char('=') || first == QLatin1Char('+') || first == QLatin1Char('-')
+            || first == QLatin1Char('@') || first == QLatin1Char('\t') || first == QLatin1Char('\r');
+}
 
 QByteArray buildTimesheetCsv(const QList<TimesheetEntry> &entries)
 {

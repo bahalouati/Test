@@ -29,6 +29,8 @@ private slots:
     void updateAuthModeHints();
     void testConnection();
     void browseForCertificate();
+    // Says so when the address would put the credentials on the wire in clear.
+    void warnAboutPlainHttp();
 
 private:
     void setStatus(const QString &text, bool isError);

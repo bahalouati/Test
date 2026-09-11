@@ -4,6 +4,7 @@
 #include "core/timesheetloader.h"
 
 #include <QDate>
+#include <QUrl>
 #include <QWidget>
 
 QT_BEGIN_NAMESPACE
@@ -55,6 +56,8 @@ private:
     QDate lastOfMonth() const;
     // The day under the calendar's current cell, or an invalid date.
     QDate selectedDay() const;
+    // Opens a URL that came from Jira, confirming first if it leaves the instance.
+    void openLink(const QUrl &url);
 
     Ui::TimesheetWidget *ui;
     jira::Client *m_client = nullptr;

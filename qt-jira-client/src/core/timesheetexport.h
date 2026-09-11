@@ -26,4 +26,8 @@ QString suggestedWorkbookName(const QDate &month);
 // non-ASCII into mojibake.
 QByteArray buildTimesheetCsv(const QList<TimesheetEntry> &entries);
 
+// Would a spreadsheet read this cell as a formula rather than text? Exposed for
+// the tests; buildTimesheetCsv applies it itself.
+bool startsSpreadsheetFormula(const QString &value);
+
 } // namespace jira
