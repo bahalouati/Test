@@ -197,12 +197,17 @@
      </column>
      <column>
       <property name="text">
-       <string>Fix version</string>
+       <string>Hours</string>
       </property>
      </column>
      <column>
       <property name="text">
        <string>Sprint</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Fix version</string>
       </property>
      </column>
      <column>
@@ -217,7 +222,7 @@
      </column>
      <column>
       <property name="text">
-       <string>Hours</string>
+       <string>Specifications</string>
       </property>
      </column>
      <column>

@@ -160,7 +160,7 @@ void SprintWidget::rebuild()
         key->setFont(keyFont);
 
         set(SummaryColumn, task.summary);
-        set(SprintColumn, task.sprint.isEmpty() ? QStringLiteral("—") : task.sprint);
+        set(SprintColumn, task.sprint.isEmpty() ? QString(QChar(0x2014)) : task.sprint);
 
         QTableWidgetItem *status = set(StatusColumn, task.unassigned
                                                              ? tr("no longer yours")

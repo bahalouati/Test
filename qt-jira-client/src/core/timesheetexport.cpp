@@ -37,6 +37,57 @@ QString oneDecimal(double hours)
 
 } // namespace
 
+namespace {
+
+QString csvField(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace(QLatin1Char('"'), QLatin1String("\"\""));
+    return QLatin1Char('"') + escaped + QLatin1Char('"');
+}
+
+} // namespace
+
+QByteArray buildTimesheetCsv(const QList<TimesheetEntry> &entries)
+{
+    QString text = QStringLiteral(
+            "Date,Issue,Summary,Hours,Sprint,Fix Version,MR Link,Testsheet,Specifications,Description\n");
+
+    for (const TimesheetEntry &entry : entries) {
+        // Everything is quoted except the hours: a quoted number imports as text
+        // in Excel, which then refuses to sum the column.
+        const QStringList before = {
+            entry.day.toString(Qt::ISODate),
+            entry.issueKey,
+            entry.summary,
+        };
+        const QStringList after = {
+            entry.sprint,
+            entry.fixVersions,
+            entry.mergeRequestUrl,
+            entry.testSheetUrl.isEmpty() ? QString() : entry.testSheetName,
+            entry.specifications,
+            entry.comment,
+        };
+
+        QStringList row;
+        row.reserve(before.size() + after.size() + 1);
+        for (const QString &field : before)
+            row.append(csvField(field));
+        row.append(oneDecimal(entry.hours));
+        for (const QString &field : after)
+            row.append(csvField(field));
+
+        text += row.join(QLatin1Char(',')) + QLatin1Char('\n');
+    }
+
+    // The BOM goes on as bytes, so the whole file is one write and there is no
+    // stream buffering to interleave with it.
+    QByteArray csv("\xEF\xBB\xBF");
+    csv += text.toUtf8();
+    return csv;
+}
+
 QString suggestedWorkbookName(const QDate &month)
 {
     return QStringLiteral("Jira_Worklog_Calendar_%1.xlsx")
@@ -57,10 +108,11 @@ bool exportTimesheetWorkbook(const QString &path,
     // -----------------------------------------------------------------------
     xlsx::Sheet *sheet = workbook.addSheet(QStringLiteral("Worklogs"));
 
-    const QStringList headers = {QObject::tr("Date"),        QObject::tr("Issue"),
-                                 QObject::tr("Summary"),     QObject::tr("Fix Version"),
-                                 QObject::tr("Sprint"),      QObject::tr("MR Link"),
-                                 QObject::tr("Hours"),       QObject::tr("Testsheet"),
+    const QStringList headers = {QObject::tr("Date"),    QObject::tr("Issue"),
+                                 QObject::tr("Summary"), QObject::tr("Hours"),
+                                 QObject::tr("Sprint"),  QObject::tr("Fix Version"),
+                                 QObject::tr("MR Link"), QObject::tr("Testsheet"),
+                                 QObject::tr("Specifications"),
                                  QObject::tr("Description")};
     for (int column = 0; column < headers.size(); ++column)
         sheet->setText(1, column + 1, headers.at(column), xlsx::Style::Header);
@@ -86,27 +138,29 @@ bool exportTimesheetWorkbook(const QString &path,
         const QString sheetName = entry.hasTestSheet() ? entry.testSheetName : dash;
         const QString mrText = entry.hasMergeRequest() ? entry.mergeRequestUrl : dash;
 
+        const QString specifications = entry.hasSpecifications() ? entry.specifications : dash;
+
         sheet->setText(row, 1, entry.day.toString(Qt::ISODate));
         sheet->setText(row, 2, entry.issueKey);
         sheet->setText(row, 3, entry.summary);
-        sheet->setText(row, 4, fix);
+        sheet->setNumber(row, 4, entry.hours);
         sheet->setText(row, 5, sprint);
+        sheet->setText(row, 6, fix);
 
-        sheet->setText(row, 6, mrText, entry.hasMergeRequest() ? xlsx::Style::Link : xlsx::Style::Default);
+        sheet->setText(row, 7, mrText, entry.hasMergeRequest() ? xlsx::Style::Link : xlsx::Style::Default);
         if (entry.hasMergeRequest())
-            sheet->setHyperlink(row, 6, entry.mergeRequestUrl);
-
-        sheet->setNumber(row, 7, entry.hours);
+            sheet->setHyperlink(row, 7, entry.mergeRequestUrl);
 
         sheet->setText(row, 8, sheetName, entry.hasTestSheet() ? xlsx::Style::Link : xlsx::Style::Default);
         if (entry.hasTestSheet())
             sheet->setHyperlink(row, 8, entry.testSheetUrl);
 
-        sheet->setText(row, 9, entry.comment);
+        sheet->setText(row, 9, specifications);
+        sheet->setText(row, 10, entry.comment);
 
         const QStringList texts = {entry.day.toString(Qt::ISODate), entry.issueKey, entry.summary,
-                                   fix, sprint, mrText, oneDecimal(entry.hours), sheetName,
-                                   entry.comment};
+                                   oneDecimal(entry.hours), sprint, fix, mrText, sheetName,
+                                   specifications, entry.comment};
         for (int column = 0; column < texts.size(); ++column)
             widths[column] = qMax(widths.at(column), int(texts.at(column).size()));
 

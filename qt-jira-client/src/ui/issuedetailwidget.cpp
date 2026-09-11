@@ -23,7 +23,10 @@ namespace {
 
 QString fieldRow(const QString &name, const QString &value)
 {
-    const QString shown = value.trimmed().isEmpty() ? QStringLiteral("—") : value.toHtmlEscaped();
+    // From its code point, so a compiler reading this file as anything but
+    // UTF-8 cannot turn it into mojibake.
+    const QString shown = value.trimmed().isEmpty() ? QString(QChar(0x2014))
+                                                    : value.toHtmlEscaped();
     return QStringLiteral("<tr><td style='padding-right:12px; color:gray;'>%1</td><td>%2</td></tr>")
             .arg(name.toHtmlEscaped(), shown);
 }
