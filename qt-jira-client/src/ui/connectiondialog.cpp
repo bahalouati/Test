@@ -57,6 +57,7 @@ ConnectionDialog::ConnectionDialog(const Credentials &credentials, QWidget *pare
     // same one on both versions.
     connect(ui->authMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &ConnectionDialog::updateAuthModeHints);
+    connect(ui->baseUrl, &QLineEdit::textChanged, this, &ConnectionDialog::warnAboutPlainHttp);
     updateAuthModeHints();
 }
 
@@ -97,6 +98,25 @@ void ConnectionDialog::updateAuthModeHints()
                              "The token authenticates on its own — no user name is needed. "
                              "Requires Jira 8.14 or newer; on an older server choose Basic above and "
                              "use your user name with your password."));
+    }
+    warnAboutPlainHttp();
+}
+
+void ConnectionDialog::warnAboutPlainHttp()
+{
+    const QString url = jira::normalizeBaseUrl(ui->baseUrl->text());
+    const bool isBasic = AuthMode(ui->authMode->currentData().toInt()) == AuthMode::Basic;
+
+    if (url.startsWith(QLatin1String("http://"), Qt::CaseInsensitive)) {
+        // Basic is base64, not encryption: over plain http the user name and
+        // password are readable by anything on the network path.
+        setStatus(isBasic
+                          ? tr("This is an http:// address, so the user name and password travel "
+                               "unencrypted and anyone on the network can read them. Use https://.")
+                          : tr("This is an http:// address, so the token travels unencrypted and "
+                               "anyone on the network can read it. Use https://."),
+                  true);
+        return;
     }
     setStatus(QString(), false);
 }

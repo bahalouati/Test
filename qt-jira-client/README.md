@@ -194,7 +194,7 @@ jiradesk --help
 ctest --test-dir build --output-on-failure
 ```
 
-62 cases over the parts that are painful to debug against a live server: base
+63 cases over the parts that are painful to debug against a live server: base
 URL normalisation and context paths, REST endpoint construction, both
 authorization headers, Jira's `+0000` timestamp format in both directions,
 duration parsing, the shape of every payload the client reads (including issues
@@ -296,6 +296,30 @@ the flag.
 
 The CSV export begins with a UTF-8 BOM for the same reason: without it Excel
 reads the file as the system code page.
+
+## Security notes
+
+- **Exports are hardened against spreadsheet formula injection.** Issue
+  summaries and comments come from Jira, where anyone who can edit an issue
+  chooses the text; a value beginning `=`, `+`, `-`, `@`, tab or return is
+  prefixed with an apostrophe so the cell stays text. The `.xlsx` was never
+  affected — it writes inline strings, which Excel does not evaluate.
+- **A link that leaves the instance is confirmed first**, with its address
+  shown, and the merge request column names the host rather than saying
+  "open". Remote links are set by whoever can edit the issue.
+- **Prefer a personal access token over a password.** Basic authentication
+  sends `base64(user:password)` on every request — encoding, not encryption —
+  so the credential is recoverable by anything that sees the traffic or the
+  stored settings. A token is scoped and revocable; a password usually is not.
+- **An `http://` address is called out in the connection dialog**, because
+  credentials on a plain connection are readable by anything on the path.
+- **Accept any certificate disables verification entirely** — not just for a
+  self-signed certificate, but for a wrong host name or an expired one too.
+  The CA certificate field is the safe route.
+- **A remembered token is stored in the clear**, in `QSettings`. Leave it off
+  and pass `JIRA_API_TOKEN` in the environment on a machine you share.
+- Redirects are restricted to the same origin, so the `Authorization` header
+  cannot follow one to another host.
 
 ## Known limits
 

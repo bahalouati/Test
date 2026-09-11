@@ -56,6 +56,7 @@ private slots:
     void namesSpreadsheetColumns();
     void writesAReadableWorkbook();
     void writesCsvWithABomAndTheRightColumns();
+    void neutralisesSpreadsheetFormulasInCsv();
     void formatsTrackedTime();
     void runsOneTimerAtATime();
     void dropsTasksNoLongerAssignedToMe();
@@ -749,6 +750,37 @@ void TestJiraCore::writesCsvWithABomAndTheRightColumns()
     const QByteArray empty = jira::buildTimesheetCsv({});
     QVERIFY(empty.startsWith("\xEF\xBB\xBF"));
     QCOMPARE(QString::fromUtf8(empty.mid(3)).count(QLatin1Char('\n')), 1);
+}
+
+void TestJiraCore::neutralisesSpreadsheetFormulasInCsv()
+{
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("=cmd|'/c calc'!A1")));
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("+1+1")));
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("-1+1")));
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("@SUM(1)")));
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("\tx")));
+    QVERIFY(jira::startsSpreadsheetFormula(QStringLiteral("\rx")));
+
+    // Ordinary text is left alone -- including text that merely contains one.
+    QVERIFY(!jira::startsSpreadsheetFormula(QStringLiteral("Rotate the cert")));
+    QVERIFY(!jira::startsSpreadsheetFormula(QStringLiteral("a=b")));
+    QVERIFY(!jira::startsSpreadsheetFormula(QString()));
+
+    jira::TimesheetEntry hostile;
+    hostile.day = QDate(2026, 9, 8);
+    hostile.issueKey = QStringLiteral("CADIM-9");
+    hostile.summary = QStringLiteral("=cmd|'/c calc'!A1");
+    hostile.comment = QStringLiteral("@SUM(1+1)");
+    hostile.sprint = QStringLiteral("Sprint 12");
+    hostile.hours = 1.0;
+
+    const QString csv = QString::fromUtf8(jira::buildTimesheetCsv({hostile}).mid(3));
+
+    // The apostrophe makes the cell text; without it Excel would evaluate it.
+    QVERIFY2(csv.contains(QStringLiteral("\"'=cmd|'/c calc'!A1\"")), qPrintable(csv));
+    QVERIFY2(csv.contains(QStringLiteral("\"'@SUM(1+1)\"")), qPrintable(csv));
+    // An ordinary field gains nothing.
+    QVERIFY2(csv.contains(QStringLiteral("\"Sprint 12\"")), qPrintable(csv));
 }
 
 void TestJiraCore::formatsTrackedTime()
