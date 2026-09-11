@@ -100,6 +100,14 @@ closed, publishes the run summary, and uploads `out/` as an artifact. Set
 variable. Cron or a container scheduler works the same way — the CLI has no CI
 dependency.
 
+## Work Calendar (desktop application)
+
+`qt-work-calendar/` holds a separate, self-contained Qt 6 desktop application
+that keeps the same kind of data interactively: a month calendar coloured
+against an eight-hour day, a work log with every field a Jira worklog carries,
+reports, an Excel/CSV export and a Jira import. It shares no code with the
+batch job above and has its own [README](qt-work-calendar/README.md).
+
 ## Tests
 
 ```bash

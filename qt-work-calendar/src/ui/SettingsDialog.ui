@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>SettingsDialog</class>
+ <widget class="QDialog" name="SettingsDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>620</width><height>520</height></rect>
+  </property>
+  <property name="windowTitle"><string>Settings</string></property>
+  <layout class="QVBoxLayout" name="dialogLayout">
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex"><number>0</number></property>
+
+     <widget class="QWidget" name="tabTargets">
+      <attribute name="title"><string>&amp;Targets</string></attribute>
+      <layout class="QVBoxLayout" name="targetsLayout">
+       <item>
+        <layout class="QFormLayout" name="targetsForm">
+         <item row="0" column="0"><widget class="QLabel" name="labelDailyTarget"><property name="text"><string>Hours per working day</string></property></widget></item>
+         <item row="0" column="1">
+          <layout class="QHBoxLayout" name="dailyTargetLayout">
+           <item><widget class="QLineEdit" name="lineDailyTarget"><property name="maximumWidth"><number>120</number></property></widget></item>
+           <item><widget class="QLabel" name="labelDailyTargetHint"><property name="text"><string>&#8212;</string></property><property name="styleSheet"><string>color: #777;</string></property></widget></item>
+           <item><spacer name="dailyTargetSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+          </layout>
+         </item>
+         <item row="1" column="0"><widget class="QLabel" name="labelWarning"><property name="text"><string>"Nearly there" from</string></property></widget></item>
+         <item row="1" column="1">
+          <layout class="QHBoxLayout" name="warningLayout">
+           <item><widget class="QLineEdit" name="lineWarningThreshold"><property name="maximumWidth"><number>120</number></property></widget></item>
+           <item><widget class="QLabel" name="labelWarningHint"><property name="text"><string>&#8212;</string></property><property name="styleSheet"><string>color: #777;</string></property></widget></item>
+           <item><spacer name="warningSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+          </layout>
+         </item>
+         <item row="2" column="0"><widget class="QLabel" name="labelUserName"><property name="text"><string>Your name</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="lineUserName"><property name="placeholderText"><string>Shown on exported reports</string></property></widget></item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupWorkingDays">
+         <property name="title"><string>Working days</string></property>
+         <layout class="QHBoxLayout" name="workingDaysLayout">
+          <item><widget class="QCheckBox" name="checkMonday"><property name="text"><string>Mon</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkTuesday"><property name="text"><string>Tue</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkWednesday"><property name="text"><string>Wed</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkThursday"><property name="text"><string>Thu</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkFriday"><property name="text"><string>Fri</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkSaturday"><property name="text"><string>Sat</string></property></widget></item>
+          <item><widget class="QCheckBox" name="checkSunday"><property name="text"><string>Sun</string></property></widget></item>
+          <item><spacer name="workingDaysSpacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property></spacer></item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="targetsBottomSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabAppearance">
+      <attribute name="title"><string>&amp;Appearance</string></attribute>
+      <layout class="QVBoxLayout" name="appearanceLayout">
+       <item>
+        <layout class="QFormLayout" name="appearanceForm">
+         <item row="0" column="0"><widget class="QLabel" name="labelDurationFormat"><property name="text"><string>Show durations as</string></property></widget></item>
+         <item row="0" column="1"><widget class="QComboBox" name="comboDurationFormat"/></item>
+         <item row="1" column="0"><widget class="QLabel" name="labelMaxLines"><property name="text"><string>Entries listed per day</string></property></widget></item>
+         <item row="1" column="1"><widget class="QSpinBox" name="spinMaxLines"><property name="minimum"><number>0</number></property><property name="maximum"><number>20</number></property></widget></item>
+         <item row="2" column="1"><widget class="QCheckBox" name="checkShowWeekends"><property name="text"><string>Show Saturday and Sunday in the calendar</string></property></widget></item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupColors">
+         <property name="title"><string>Day colours</string></property>
+         <layout class="QGridLayout" name="colorsLayout">
+          <item row="0" column="0"><widget class="QLabel" name="labelColorComplete"><property name="text"><string>Target reached</string></property></widget></item>
+          <item row="0" column="1"><widget class="QPushButton" name="buttonColorComplete"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="0" column="2"><widget class="QLabel" name="labelColorPartial"><property name="text"><string>Nearly there</string></property></widget></item>
+          <item row="0" column="3"><widget class="QPushButton" name="buttonColorPartial"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="labelColorLow"><property name="text"><string>Well short</string></property></widget></item>
+          <item row="1" column="1"><widget class="QPushButton" name="buttonColorLow"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="1" column="2"><widget class="QLabel" name="labelColorEmpty"><property name="text"><string>Nothing logged</string></property></widget></item>
+          <item row="1" column="3"><widget class="QPushButton" name="buttonColorEmpty"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="2" column="0"><widget class="QLabel" name="labelColorFuture"><property name="text"><string>Still to come</string></property></widget></item>
+          <item row="2" column="1"><widget class="QPushButton" name="buttonColorFuture"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="2" column="2"><widget class="QLabel" name="labelColorAbsence"><property name="text"><string>Absence</string></property></widget></item>
+          <item row="2" column="3"><widget class="QPushButton" name="buttonColorAbsence"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="3" column="0"><widget class="QLabel" name="labelColorNonWorking"><property name="text"><string>Non-working day</string></property></widget></item>
+          <item row="3" column="1"><widget class="QPushButton" name="buttonColorNonWorking"><property name="text"><string/></property><property name="minimumWidth"><number>70</number></property></widget></item>
+          <item row="3" column="3"><widget class="QPushButton" name="buttonResetColors"><property name="text"><string>Reset colours</string></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="appearanceBottomSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabDefaults">
+      <attribute name="title"><string>&amp;New entries</string></attribute>
+      <layout class="QVBoxLayout" name="defaultsLayout">
+       <item>
+        <layout class="QFormLayout" name="defaultsForm">
+         <item row="0" column="0"><widget class="QLabel" name="labelDefaultActivity"><property name="text"><string>Activity</string></property></widget></item>
+         <item row="0" column="1"><widget class="QComboBox" name="comboDefaultActivity"/></item>
+         <item row="1" column="0"><widget class="QLabel" name="labelDefaultLocation"><property name="text"><string>Location</string></property></widget></item>
+         <item row="1" column="1"><widget class="QComboBox" name="comboDefaultLocation"/></item>
+         <item row="2" column="0"><widget class="QLabel" name="labelDefaultStart"><property name="text"><string>Day starts at</string></property></widget></item>
+         <item row="2" column="1"><widget class="QTimeEdit" name="timeDefaultStart"><property name="displayFormat"><string>HH:mm</string></property></widget></item>
+         <item row="3" column="0"><widget class="QLabel" name="labelRounding"><property name="text"><string>Round durations up to</string></property></widget></item>
+         <item row="3" column="1">
+          <widget class="QSpinBox" name="spinRounding">
+           <property name="minimum"><number>0</number></property>
+           <property name="maximum"><number>120</number></property>
+           <property name="suffix"><string> minutes</string></property>
+           <property name="specialValueText"><string>no rounding</string></property>
+          </widget>
+         </item>
+         <item row="4" column="1"><widget class="QCheckBox" name="checkDefaultBillable"><property name="text"><string>Billable by default</string></property></widget></item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelDefaultsHelp">
+         <property name="text"><string>Rounding applies to the timer and to durations typed in the entry dialog, never to entries that are already saved.</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+         <property name="styleSheet"><string>color: #777;</string></property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="defaultsBottomSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <widget class="QWidget" name="tabJira">
+      <attribute name="title"><string>&amp;Jira</string></attribute>
+      <layout class="QVBoxLayout" name="jiraLayout">
+       <item>
+        <layout class="QFormLayout" name="jiraForm">
+         <item row="0" column="0"><widget class="QLabel" name="labelJiraUrl"><property name="text"><string>Server</string></property></widget></item>
+         <item row="0" column="1"><widget class="QLineEdit" name="lineJiraUrl"><property name="placeholderText"><string>https://jira.example.com</string></property></widget></item>
+         <item row="1" column="0"><widget class="QLabel" name="labelJiraUser"><property name="text"><string>User name</string></property></widget></item>
+         <item row="1" column="1"><widget class="QLineEdit" name="lineJiraUser"/></item>
+         <item row="2" column="0"><widget class="QLabel" name="labelJiraToken"><property name="text"><string>Password or API token</string></property></widget></item>
+         <item row="2" column="1"><widget class="QLineEdit" name="lineJiraToken"><property name="echoMode"><enum>QLineEdit::Password</enum></property></widget></item>
+         <item row="3" column="0"><widget class="QLabel" name="labelSprintField"><property name="text"><string>Sprint field</string></property></widget></item>
+         <item row="3" column="1"><widget class="QLineEdit" name="lineSprintField"><property name="placeholderText"><string>customfield_10005</string></property></widget></item>
+         <item row="4" column="0"><widget class="QLabel" name="labelTestsheetKeyword"><property name="text"><string>Testsheet keyword</string></property></widget></item>
+         <item row="4" column="1"><widget class="QLineEdit" name="lineTestsheetKeyword"><property name="placeholderText"><string>testsheet</string></property></widget></item>
+         <item row="5" column="0"><widget class="QLabel" name="labelMergeMarker"><property name="text"><string>Merge request marker</string></property></widget></item>
+         <item row="5" column="1"><widget class="QLineEdit" name="lineMergeMarker"><property name="placeholderText"><string>/merge_requests/</string></property></widget></item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QLabel" name="labelJiraHelp">
+         <property name="text"><string>An attachment whose file name contains the testsheet keyword is taken as that issue's testsheet. A remote link whose address contains the merge request marker is taken as its merge request.
+
+The token is stored in the settings file in clear text. Leave it empty to be asked for it at each import instead.</string></property>
+         <property name="wordWrap"><bool>true</bool></property>
+         <property name="styleSheet"><string>color: #777;</string></property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="jiraBottomSpacer">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation"><enum>Qt::Horizontal</enum></property>
+     <property name="standardButtons"><set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok|QDialogButtonBox::RestoreDefaults</set></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

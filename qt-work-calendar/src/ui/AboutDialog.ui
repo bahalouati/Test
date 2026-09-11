@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>AboutDialog</class>
+ <widget class="QDialog" name="AboutDialog">
+  <property name="geometry">
+   <rect><x>0</x><y>0</y><width>540</width><height>420</height></rect>
+  </property>
+  <property name="windowTitle"><string>About Work Calendar</string></property>
+  <layout class="QVBoxLayout" name="dialogLayout">
+   <item>
+    <widget class="QLabel" name="labelTitle">
+     <property name="text"><string>Work Calendar</string></property>
+     <property name="styleSheet"><string>font-size: 18pt; font-weight: bold;</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelVersion">
+     <property name="text"><string>version</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTextBrowser" name="textAbout">
+     <property name="openExternalLinks"><bool>true</bool></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="labelDatabase">
+     <property name="text"><string/></property>
+     <property name="wordWrap"><bool>true</bool></property>
+     <property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property>
+     <property name="styleSheet"><string>color: #777;</string></property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation"><enum>Qt::Horizontal</enum></property>
+     <property name="standardButtons"><set>QDialogButtonBox::Close</set></property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
