@@ -4,6 +4,8 @@
 #include "core/jiraclient.h"
 #include "issuedetailwidget.h"
 #include "issuetablemodel.h"
+#include "timesheetsettingsdialog.h"
+#include "timesheetwidget.h"
 
 #include <QAction>
 #include <QApplication>
@@ -22,6 +24,7 @@
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTableView>
 #include <QToolBar>
 
@@ -135,7 +138,18 @@ void MainWindow::setupUi()
     splitter->setStretchFactor(0, 3);
     splitter->setStretchFactor(1, 2);
     splitter->setObjectName(QStringLiteral("mainSplitter"));
-    setCentralWidget(splitter);
+
+    m_timesheet = new TimesheetWidget(m_client, this);
+    connect(m_timesheet, &TimesheetWidget::errorOccurred, this, &MainWindow::showError);
+    connect(m_timesheet, &TimesheetWidget::issueActivated, this, &MainWindow::openIssueByKey);
+    connect(m_timesheet, &TimesheetWidget::statusMessage, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 6000);
+    });
+
+    m_tabs = new QTabWidget(this);
+    m_tabs->addTab(splitter, tr("Search"));
+    m_tabs->addTab(m_timesheet, tr("My month"));
+    setCentralWidget(m_tabs);
 
     QSettings settings;
     if (!splitter->restoreState(settings.value(QLatin1String(kSplitterKey)).toByteArray()))
@@ -160,6 +174,8 @@ void MainWindow::setupUi()
     fileMenu->addAction(connectAction);
     fileMenu->addAction(tr("&Refresh"), QKeySequence::Refresh, this, &MainWindow::runSearch);
     fileMenu->addSeparator();
+    fileMenu->addAction(tr("Timesheet settings…"), this, &MainWindow::showTimesheetSettings);
+    fileMenu->addSeparator();
     fileMenu->addAction(tr("Forget stored token"), this, [this] {
         jira::Credentials::forgetToken();
         statusBar()->showMessage(tr("The stored token was removed. It stays in use until you quit."), 6000);
@@ -176,6 +192,15 @@ void MainWindow::setupUi()
                               "Jira Server, Data Center or Cloud, at whatever address your instance lives.</p>"
                               "<p>Authenticates with an API token: a Personal Access Token as a bearer "
                               "token on Server/Data Center, or e-mail plus token over HTTP Basic on Cloud.</p>"));
+    });
+
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this, toolBar](int index) {
+        const bool onSearch = index == 0;
+        m_jql->setEnabled(onSearch);
+        m_searchAction->setEnabled(onSearch);
+        m_previousAction->setVisible(onSearch);
+        m_nextAction->setVisible(onSearch);
+        toolBar->setVisible(true);
     });
 
     updatePagingControls();
@@ -259,6 +284,8 @@ void MainWindow::verifyIdentity()
     connect(reply, &jira::Reply::succeeded, this, [this, host](const QJsonValue &body) {
         const jira::User me = jira::User::fromJson(body.toObject());
         m_connectionLabel->setText(tr("%1 on %2").arg(me.label(), host));
+        m_timesheet->setIdentity(me);
+        m_timesheet->refresh();
     });
     connect(reply, &jira::Reply::failed, this, [this, host](const jira::Error &error) {
         m_connectionLabel->setText(tr("Not connected to %1").arg(host));
@@ -356,6 +383,23 @@ void MainWindow::refreshIssue(const QString &issueKey)
     connect(reply, &jira::Reply::failed, this, [](const jira::Error &) {
         // The write already succeeded; a stale row is not worth a dialog.
     });
+}
+
+void MainWindow::showTimesheetSettings()
+{
+    TimesheetSettingsDialog dialog(jira::TimesheetSettings::load(), this);
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+    dialog.settings().save();
+    m_timesheet->refresh();
+}
+
+void MainWindow::openIssueByKey(const QString &issueKey)
+{
+    // Jumping from a work log row back to the issue it was booked against.
+    m_tabs->setCurrentIndex(0);
+    m_jql->setCurrentText(QStringLiteral("key = %1").arg(issueKey));
+    runSearch();
 }
 
 void MainWindow::showError(const QString &message)

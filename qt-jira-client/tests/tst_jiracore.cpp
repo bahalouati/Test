@@ -1,6 +1,8 @@
 #include "core/credentials.h"
 #include "core/jiraclient.h"
 #include "core/jiratypes.h"
+#include "core/timesheet.h"
+#include "core/timesheetloader.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -36,6 +38,16 @@ private slots:
     void readsJiraErrorBodies();
     void explainsAuthenticationFailures();
     void sortsIssueKeysNumerically();
+    void parsesSprintFromServerToString();
+    void parsesSprintFromModernObject();
+    void parsesFixVersionsAndAttachments();
+    void findsTestSheetAttachment();
+    void findsMergeRequestLink();
+    void classifiesDaysAgainstTarget();
+    void countsMissingHoursPerDay();
+    void includesDaysWithNothingLogged();
+    void buildsWorklogAuthorJql();
+    void formatsCalendarLine();
     void validatesWorklogDurations_data();
     void validatesWorklogDurations();
 };
@@ -404,6 +416,222 @@ void TestJiraCore::sortsIssueKeysNumerically()
     QCOMPARE(jira::issueSortKey(QStringLiteral("NOTAKEY")), QStringLiteral("NOTAKEY"));
     QCOMPARE(jira::issueSortKey(QStringLiteral("OPS-abc")), QStringLiteral("OPS-abc"));
     QCOMPARE(jira::issueSortKey(QString()), QString());
+}
+
+void TestJiraCore::parsesSprintFromServerToString()
+{
+    // What Jira Server actually returns: the Java toString() of the sprint.
+    const QByteArray payload = R"({
+        "customfield_10005": [
+            "com.atlassian.greenhopper.service.sprint.Sprint@1a[id=41,rapidViewId=7,state=CLOSED,name=Sprint 11,startDate=2026-08-01]",
+            "com.atlassian.greenhopper.service.sprint.Sprint@2b[id=42,rapidViewId=7,state=ACTIVE,name=Sprint 12,startDate=2026-09-01]"
+        ]
+    })";
+    const QJsonObject fields = QJsonDocument::fromJson(payload).object();
+
+    // The last entry is the current sprint, not the first.
+    QCOMPARE(jira::sprintNameFromField(fields.value(QStringLiteral("customfield_10005"))),
+             QStringLiteral("Sprint 12"));
+
+    // A name that runs to the closing bracket rather than a comma.
+    const QJsonDocument tail = QJsonDocument::fromJson(
+            R"({"f": ["com.atlassian.greenhopper.service.sprint.Sprint@3c[id=9,name=Hardening]"]})");
+    QCOMPARE(jira::sprintNameFromField(tail.object().value(QStringLiteral("f"))),
+             QStringLiteral("Hardening"));
+
+    QVERIFY(jira::sprintNameFromField(QJsonValue()).isEmpty());
+    QVERIFY(jira::sprintNameFromField(QJsonValue(QJsonArray())).isEmpty());
+}
+
+void TestJiraCore::parsesSprintFromModernObject()
+{
+    // Newer instances return real objects; the same call must cope.
+    const QJsonDocument document = QJsonDocument::fromJson(
+            R"({"f": [{"id": 41, "name": "Sprint 11"}, {"id": 42, "name": "Sprint 12"}]})");
+    QCOMPARE(jira::sprintNameFromField(document.object().value(QStringLiteral("f"))),
+             QStringLiteral("Sprint 12"));
+}
+
+void TestJiraCore::parsesFixVersionsAndAttachments()
+{
+    const QByteArray payload = R"({
+        "key": "OPS-42",
+        "fields": {
+            "summary": "Rotate the signing certificate",
+            "fixVersions": [{"name": "1.4.0"}, {"name": "1.5.0"}],
+            "attachment": [
+                {"id": "1", "filename": "notes.txt", "content": "https://jira/secure/attachment/1/notes.txt"},
+                {"id": "2", "filename": "OPS-42_TestSheet_v3.xlsx",
+                 "content": "https://jira/secure/attachment/2/sheet.xlsx", "size": 8192}
+            ],
+            "customfield_10005": ["com.x.Sprint@1[id=42,name=Sprint 12,state=ACTIVE]"]
+        }
+    })";
+
+    const jira::Issue issue = jira::Issue::fromJson(QJsonDocument::fromJson(payload).object());
+    QCOMPARE(issue.fixVersions, QStringList({QStringLiteral("1.4.0"), QStringLiteral("1.5.0")}));
+    QCOMPARE(issue.attachments.size(), 2);
+    QCOMPARE(issue.attachments.at(1).size, qint64(8192));
+    // The sprint field id is not hard-coded; any customfield_* that parses wins.
+    QCOMPARE(issue.sprint, QStringLiteral("Sprint 12"));
+}
+
+void TestJiraCore::findsTestSheetAttachment()
+{
+    const QJsonDocument document = QJsonDocument::fromJson(R"([
+        {"filename": "screenshot.png", "content": "https://jira/a/1"},
+        {"filename": "OPS-42_TESTSHEET_final.xlsx", "content": "https://jira/a/2"},
+        {"filename": "another_testsheet.xlsx", "content": "https://jira/a/3"}
+    ])");
+    const QList<jira::Attachment> attachments = jira::Attachment::listFromJson(document.array());
+    QCOMPARE(attachments.size(), 3);
+
+    // Case-insensitive, and the first match wins -- same as the script.
+    const jira::Attachment sheet = jira::findAttachment(attachments, QStringLiteral("testsheet"));
+    QCOMPARE(sheet.filename, QStringLiteral("OPS-42_TESTSHEET_final.xlsx"));
+    QCOMPARE(sheet.contentUrl, QStringLiteral("https://jira/a/2"));
+
+    QVERIFY(jira::findAttachment(attachments, QStringLiteral("specification")).isNull());
+    // An empty marker must not match everything by accident.
+    QVERIFY(jira::findAttachment(attachments, QString()).isNull());
+}
+
+void TestJiraCore::findsMergeRequestLink()
+{
+    const QJsonDocument document = QJsonDocument::fromJson(R"([
+        {"object": {"url": "https://wiki.example.com/page", "title": "Design"}},
+        {"object": {"url": "https://gitlab.example.com/team/app/-/merge_requests/812", "title": "MR 812"}}
+    ])");
+    const QList<jira::RemoteLink> links = jira::RemoteLink::listFromJson(document.array());
+    QCOMPARE(links.size(), 2);
+    QCOMPARE(jira::findLinkUrl(links, QStringLiteral("/merge_requests/")),
+             QStringLiteral("https://gitlab.example.com/team/app/-/merge_requests/812"));
+    QVERIFY(jira::findLinkUrl(links, QStringLiteral("/pull/")).isEmpty());
+}
+
+void TestJiraCore::classifiesDaysAgainstTarget()
+{
+    jira::TimesheetRules rules;   // 8h full, 6h amber
+    const QDate today(2026, 9, 11);
+
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 8.0, today, rules), jira::DayStatus::Complete);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 9.5, today, rules), jira::DayStatus::Complete);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 6.0, today, rules), jira::DayStatus::Partial);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 7.9, today, rules), jira::DayStatus::Partial);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 5.9, today, rules), jira::DayStatus::Short);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 10), 0.0, today, rules), jira::DayStatus::Short);
+
+    // Today itself is judged like any other day, but tomorrow is not judged at all.
+    QCOMPARE(jira::classifyDay(today, 0.0, today, rules), jira::DayStatus::Short);
+    QCOMPARE(jira::classifyDay(QDate(2026, 9, 14), 0.0, today, rules), jira::DayStatus::Future);
+
+    QVERIFY(rules.isWorkingDay(QDate(2026, 9, 11)));    // Friday
+    QVERIFY(!rules.isWorkingDay(QDate(2026, 9, 12)));   // Saturday
+    QVERIFY(!rules.isWorkingDay(QDate(2026, 9, 13)));   // Sunday
+}
+
+void TestJiraCore::countsMissingHoursPerDay()
+{
+    jira::TimesheetRules rules;
+    const QDate today(2026, 9, 11);
+
+    QList<jira::TimesheetEntry> entries;
+    const auto entry = [](const QDate &day, const QString &key, double hours) {
+        jira::TimesheetEntry e;
+        e.day = day;
+        e.issueKey = key;
+        e.hours = hours;
+        return e;
+    };
+    // Mon full, Tue short by 2.5, Wed nothing at all, Thu over a full day.
+    entries << entry(QDate(2026, 9, 7), QStringLiteral("OPS-1"), 8.0)
+            << entry(QDate(2026, 9, 8), QStringLiteral("OPS-2"), 3.5)
+            << entry(QDate(2026, 9, 8), QStringLiteral("OPS-3"), 2.0)
+            << entry(QDate(2026, 9, 10), QStringLiteral("OPS-4"), 9.0);
+
+    const QList<jira::DaySummary> days = jira::summariseDays(
+            entries, QDate(2026, 9, 7), QDate(2026, 9, 11), today, rules);
+    QCOMPARE(days.size(), 5);   // Mon-Fri
+
+    QCOMPARE(days.at(0).hours, 8.0);
+    QVERIFY(!days.at(0).isMissing(rules));
+
+    QCOMPARE(days.at(1).hours, 5.5);            // two worklogs summed
+    QCOMPARE(days.at(1).entries.size(), 2);
+    QCOMPARE(days.at(1).missingHours(rules), 2.5);
+
+    QCOMPARE(days.at(2).hours, 0.0);            // Wednesday, nothing logged
+    QCOMPARE(days.at(2).missingHours(rules), 8.0);
+
+    // Over a full day owes nothing; it must not offset another day either.
+    QCOMPARE(days.at(3).missingHours(rules), 0.0);
+
+    // Friday is today with nothing logged -> still counted as missing.
+    QCOMPARE(days.at(4).missingHours(rules), 8.0);
+
+    QCOMPARE(jira::totalLoggedHours(days), 22.5);
+    QCOMPARE(jira::totalMissingHours(days, rules), 18.5);   // 2.5 + 8 + 8
+}
+
+void TestJiraCore::includesDaysWithNothingLogged()
+{
+    jira::TimesheetRules rules;
+    // An empty month still yields one row per weekday -- the empty days are
+    // exactly what the view exists to show.
+    const QList<jira::DaySummary> days = jira::summariseDays(
+            {}, QDate(2026, 9, 1), QDate(2026, 9, 30), QDate(2026, 9, 30), rules);
+    QCOMPARE(days.size(), 22);   // weekdays in September 2026
+    for (const jira::DaySummary &day : days)
+        QCOMPARE(day.status, jira::DayStatus::Short);
+
+    // A reversed or invalid range yields nothing rather than looping forever.
+    QVERIFY(jira::summariseDays({}, QDate(2026, 9, 30), QDate(2026, 9, 1),
+                                QDate(2026, 9, 30), rules).isEmpty());
+    QVERIFY(jira::summariseDays({}, QDate(), QDate(), QDate(), rules).isEmpty());
+}
+
+void TestJiraCore::buildsWorklogAuthorJql()
+{
+    jira::User server;
+    server.name = QStringLiteral("mlouati");
+    QCOMPARE(jira::TimesheetLoader::buildJql(QDate(2026, 9, 1), QDate(2026, 9, 30), server),
+             QStringLiteral("worklogAuthor = \"mlouati\" AND worklogDate >= \"2026-09-01\" "
+                            "AND worklogDate <= \"2026-09-30\""));
+
+    jira::User cloud;
+    cloud.accountId = QStringLiteral("5b10a2");
+    QVERIFY(jira::TimesheetLoader::buildJql(QDate(2026, 9, 1), QDate(2026, 9, 30), cloud)
+                    .contains(QStringLiteral("worklogAuthor = \"5b10a2\"")));
+
+    // Nothing known about the user: fall back to Jira resolving it.
+    QVERIFY(jira::TimesheetLoader::buildJql(QDate(2026, 9, 1), QDate(2026, 9, 30), jira::User())
+                    .startsWith(QStringLiteral("worklogAuthor = currentUser()")));
+
+    // A quote in a user name must not break out of the JQL string.
+    jira::User awkward;
+    awkward.name = QStringLiteral("o\"brien");
+    QVERIFY(jira::TimesheetLoader::buildJql(QDate(2026, 9, 1), QDate(2026, 9, 30), awkward)
+                    .contains(QStringLiteral("\"o\\\"brien\"")));
+}
+
+void TestJiraCore::formatsCalendarLine()
+{
+    jira::TimesheetEntry entry;
+    entry.issueKey = QStringLiteral("OPS-42");
+    entry.sprint = QStringLiteral("Sprint 12");
+    entry.fixVersions = QStringLiteral("1.4.0");
+    entry.hours = 2.5;
+    QCOMPARE(entry.calendarLine(), QStringLiteral("OPS-42 [Sprint 12] [1.4.0] (2.5h)"));
+
+    // Whole hours lose the decimal; missing values show a dash, as in the script.
+    jira::TimesheetEntry bare;
+    bare.issueKey = QStringLiteral("OPS-1");
+    bare.hours = 3.0;
+    QCOMPARE(bare.calendarLine(), QStringLiteral("OPS-1 [-] [-] (3h)"));
+    QVERIFY(!bare.hasFixVersion());
+    QVERIFY(!bare.hasSprint());
+    QVERIFY(!bare.hasTestSheet());
+    QVERIFY(!bare.hasMergeRequest());
 }
 
 void TestJiraCore::validatesWorklogDurations_data()

@@ -7,6 +7,7 @@
 #include <QJsonValue>
 #include <QObject>
 #include <QUrl>
+#include <QStringList>
 #include <QUrlQuery>
 
 class QNetworkAccessManager;
@@ -66,6 +67,9 @@ public:
     // Endpoints. Every one returns a Reply owned by this Client.
     Reply *fetchMyself();
     Reply *search(const QString &jql, int startAt, int maxResults);
+    // Same, plus instance-specific fields (a sprint custom field, attachments)
+    // so one search covers what would otherwise be a call per issue.
+    Reply *search(const QString &jql, int startAt, int maxResults, const QStringList &extraFields);
     Reply *fetchIssue(const QString &issueKey);
     Reply *fetchComments(const QString &issueKey);
     Reply *addComment(const QString &issueKey, const QString &body);
@@ -77,6 +81,11 @@ public:
     Reply *fetchTransitions(const QString &issueKey);
     Reply *applyTransition(const QString &issueKey, const QString &transitionId);
     Reply *fetchProjects();
+    // Remote links -- where a linked GitLab/GitHub merge request shows up.
+    Reply *fetchRemoteLinks(const QString &issueKey);
+    // Worklogs are fetched per issue rather than through search, because search
+    // caps the embedded worklog list at 20 entries and silently truncates.
+    Reply *fetchIssueWorklogs(const QString &issueKey) { return fetchWorklogs(issueKey); }
 
     // The field set search asks for. Requesting these by name rather than
     // taking Jira's default keeps result pages small on big instances.

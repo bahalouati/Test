@@ -6,6 +6,7 @@
 #include <QMainWindow>
 
 class IssueDetailWidget;
+class TimesheetWidget;
 class IssueTableModel;
 class QComboBox;
 class QLabel;
@@ -13,6 +14,7 @@ class QProgressBar;
 class QPushButton;
 class QSortFilterProxyModel;
 class QTableView;
+class QTabWidget;
 
 namespace jira { class Client; }
 
@@ -43,6 +45,8 @@ private slots:
     void issueSelected(const QModelIndex &current);
     void refreshIssue(const QString &issueKey);
     void showError(const QString &message);
+    void showTimesheetSettings();
+    void openIssueByKey(const QString &issueKey);
 
 private:
     void setupUi();
@@ -56,6 +60,8 @@ private:
     IssueTableModel *m_model;
     QSortFilterProxyModel *m_proxy;
     IssueDetailWidget *m_detail;
+    TimesheetWidget *m_timesheet;
+    QTabWidget *m_tabs;
 
     QComboBox *m_jql;
     QTableView *m_table;
