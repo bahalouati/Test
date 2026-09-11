@@ -53,7 +53,9 @@ ConnectionDialog::ConnectionDialog(const Credentials &credentials, QWidget *pare
     connect(m_testButton, &QPushButton::clicked, this, &ConnectionDialog::testConnection);
 
     connect(ui->browse, &QPushButton::clicked, this, &ConnectionDialog::browseForCertificate);
-    connect(ui->authMode, &QComboBox::currentIndexChanged, this,
+    // Qt5 overloads currentIndexChanged on int and QString; QOverload picks the
+    // same one on both versions.
+    connect(ui->authMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &ConnectionDialog::updateAuthModeHints);
     updateAuthModeHints();
 }

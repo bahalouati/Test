@@ -12,17 +12,35 @@ on:
 
 jobs:
   build:
+    # Both supported Qt majors, so the one nobody develops against cannot
+    # quietly stop compiling.
+    strategy:
+      fail-fast: false
+      matrix:
+        qt: [5, 6]
+    name: Qt ${{ matrix.qt }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Qt 6
+
+      - name: Install Qt ${{ matrix.qt }}
         run: |
           sudo apt-get update
-          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools cmake g++
+          if [ "${{ matrix.qt }}" = "6" ]; then
+            sudo apt-get install -y qt6-base-dev qt6-base-dev-tools cmake g++
+          else
+            sudo apt-get install -y qtbase5-dev qtbase5-dev-tools cmake g++
+          fi
+
       - name: Configure
-        run: cmake -S qt-jira-client -B build -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -S qt-jira-client -B build
+          -DCMAKE_BUILD_TYPE=Release
+          -DJIRADESK_QT_VERSION=${{ matrix.qt }}
+
       - name: Build
         run: cmake --build build -j"$(nproc)"
+
       # The tests need no display and no network -- the Jira layer is exercised
       # through parsed payloads, not a server.
       - name: Test

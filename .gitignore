@@ -7,5 +7,5 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# Qt client build output
-qt-jira-client/build/
+# Qt client build output -- build/, build5/, build-qt6/, anything build*
+qt-jira-client/build*/

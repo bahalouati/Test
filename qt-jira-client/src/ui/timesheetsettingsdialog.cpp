@@ -18,7 +18,7 @@ TimesheetSettingsDialog::TimesheetSettingsDialog(const jira::TimesheetSettings &
     ui->partialDay->setValue(settings.rules.partialDayHours);
 
     // The amber band has to sit below the green one or it can never show.
-    connect(ui->fullDay, &QDoubleSpinBox::valueChanged, this, [this](double value) {
+    connect(ui->fullDay, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
         ui->partialDay->setMaximum(value);
     });
     ui->partialDay->setMaximum(ui->fullDay->value());

@@ -1,6 +1,7 @@
 # JiraDesk
 
-A Qt 6 desktop client for Jira, speaking the **REST API v2** over an API token.
+A Qt desktop client for Jira, speaking the **REST API v2** over an API token.
+Builds against Qt 6 or Qt 5.15.
 Point it at whatever address your Jira lives at — Server, Data Center or Cloud,
 under a context path or not — search with JQL, and work the issue without
 opening a browser.
@@ -147,17 +148,30 @@ The system proxy configuration is used, so a corporate proxy needs no setup here
 
 ## Building
 
-Needs Qt 6.2 or newer (Core, Gui, Widgets, Network, and Test for the tests) and
-a C++17 compiler.
+Builds against **Qt 6.2 or newer, or Qt 5.15** (Core, Gui, Widgets, Network,
+and Test for the tests), with a C++17 compiler. Both are built in CI.
 
 ```bash
-# Debian / Ubuntu
+# Debian / Ubuntu -- Qt 6
 sudo apt install qt6-base-dev qt6-base-dev-tools cmake g++
+# ...or Qt 5
+sudo apt install qtbase5-dev qtbase5-dev-tools cmake g++
 
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ./build/jiradesk
 ```
+
+With both installed, Qt 6 wins. Pin the other explicitly:
+
+```bash
+cmake -S . -B build -DJIRADESK_QT_VERSION=5    # or 6, or Auto (the default)
+```
+
+Qt 5.15 is the floor rather than an older 5.x because
+`QNetworkRequest::setTransferTimeout` arrived there, and a request with no
+timeout can hang the window indefinitely. The forms open in either version's
+Qt Designer.
 
 On macOS `brew install qt cmake`, on Windows use the Qt online installer and
 pass `-DCMAKE_PREFIX_PATH=<qt>/msvc2019_64` to the configure step.

@@ -87,8 +87,10 @@ TimesheetWidget::TimesheetWidget(QWidget *parent)
     connect(ui->refresh, &QPushButton::clicked, this, &TimesheetWidget::refresh);
     connect(ui->exportCsv, &QPushButton::clicked, this, &TimesheetWidget::exportCsv);
     connect(ui->exportXlsx, &QPushButton::clicked, this, &TimesheetWidget::exportXlsx);
-    connect(ui->month, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
-    connect(ui->year, &QComboBox::currentIndexChanged, this, &TimesheetWidget::monthChanged);
+    connect(ui->month, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TimesheetWidget::monthChanged);
+    connect(ui->year, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &TimesheetWidget::monthChanged);
     connect(ui->calendar, &QTableWidget::cellDoubleClicked, this, &TimesheetWidget::cellActivated);
     connect(ui->calendar, &QWidget::customContextMenuRequested,
             this, &TimesheetWidget::showCalendarMenu);
