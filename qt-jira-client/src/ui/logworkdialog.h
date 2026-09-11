@@ -3,19 +3,19 @@
 #include <QDateTime>
 #include <QDialog>
 
-class QDateTimeEdit;
-class QDialogButtonBox;
-class QLabel;
-class QLineEdit;
-class QPlainTextEdit;
+QT_BEGIN_NAMESPACE
+namespace Ui { class LogWorkDialog; }
+QT_END_NAMESPACE
 
 // Collects one worklog entry: how long, when it started, and an optional note.
+// The layout lives in logworkdialog.ui.
 class LogWorkDialog : public QDialog
 {
     Q_OBJECT
 
 public:
     explicit LogWorkDialog(const QString &issueKey, const QString &summary, QWidget *parent = nullptr);
+    ~LogWorkDialog() override;
 
     QString timeSpent() const;
     QDateTime started() const;
@@ -25,9 +25,5 @@ private slots:
     void validate();
 
 private:
-    QLineEdit *m_timeSpent;
-    QDateTimeEdit *m_started;
-    QPlainTextEdit *m_comment;
-    QLabel *m_error;
-    QDialogButtonBox *m_buttons;
+    Ui::LogWorkDialog *ui;
 };

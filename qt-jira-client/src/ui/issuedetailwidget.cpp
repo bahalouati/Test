@@ -1,4 +1,5 @@
 #include "issuedetailwidget.h"
+#include "ui_issuedetailwidget.h"
 
 #include "core/jiraclient.h"
 #include "logworkdialog.h"
@@ -36,105 +37,41 @@ QString formatTimestamp(const QDateTime &dateTime)
 
 } // namespace
 
-IssueDetailWidget::IssueDetailWidget(jira::Client *client, QWidget *parent)
+IssueDetailWidget::IssueDetailWidget(QWidget *parent)
     : QWidget(parent)
-    , m_client(client)
+    , ui(new Ui::IssueDetailWidget)
 {
-    m_heading = new QLabel(this);
-    m_heading->setWordWrap(true);
-    m_heading->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    ui->setupUi(this);
 
-    m_openInBrowser = new QPushButton(tr("Open in Jira"), this);
-    connect(m_openInBrowser, &QPushButton::clicked, this, &IssueDetailWidget::openInBrowser);
-
-    m_transitions = new QComboBox(this);
-    m_transitions->setMinimumWidth(160);
-    m_transitions->setToolTip(tr("Workflow transitions available to you on this issue"));
-
-    m_applyTransition = new QPushButton(tr("Move"), this);
-    connect(m_applyTransition, &QPushButton::clicked, this, &IssueDetailWidget::applyTransition);
-
-    auto *actions = new QHBoxLayout;
-    actions->addWidget(m_transitions);
-    actions->addWidget(m_applyTransition);
-    actions->addStretch();
-    actions->addWidget(m_openInBrowser);
-
-    m_fields = new QLabel(this);
-    m_fields->setTextFormat(Qt::RichText);
-    m_fields->setWordWrap(true);
-    m_fields->setTextInteractionFlags(Qt::TextSelectableByMouse);
-
-    m_description = new QTextBrowser(this);
-    m_description->setOpenExternalLinks(true);
-
-    m_comments = new QTextBrowser(this);
-    m_comments->setOpenExternalLinks(true);
-    m_newComment = new QPlainTextEdit(this);
-    m_newComment->setPlaceholderText(tr("Write a comment…"));
-    m_newComment->setMaximumHeight(90);
-    m_newComment->setTabChangesFocus(true);
-    m_addComment = new QPushButton(tr("Add comment"), this);
-    connect(m_addComment, &QPushButton::clicked, this, &IssueDetailWidget::submitComment);
-
-    auto *commentActions = new QHBoxLayout;
-    commentActions->addStretch();
-    commentActions->addWidget(m_addComment);
-
-    auto *commentsPage = new QWidget(this);
-    auto *commentsLayout = new QVBoxLayout(commentsPage);
-    commentsLayout->setContentsMargins(0, 0, 0, 0);
-    commentsLayout->addWidget(m_comments, 1);
-    commentsLayout->addWidget(m_newComment);
-    commentsLayout->addLayout(commentActions);
-
-    m_worklogs = new QTableWidget(0, 4, this);
-    m_worklogs->setHorizontalHeaderLabels({tr("Started"), tr("Author"), tr("Time"), tr("Description")});
-    m_worklogs->horizontalHeader()->setStretchLastSection(true);
-    m_worklogs->verticalHeader()->setVisible(false);
-    m_worklogs->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_worklogs->setSelectionBehavior(QAbstractItemView::SelectRows);
-
-    m_worklogTotal = new QLabel(this);
-    m_logWork = new QPushButton(tr("Log work…"), this);
-    connect(m_logWork, &QPushButton::clicked, this, &IssueDetailWidget::logWork);
-
-    auto *worklogActions = new QHBoxLayout;
-    worklogActions->addWidget(m_worklogTotal);
-    worklogActions->addStretch();
-    worklogActions->addWidget(m_logWork);
-
-    auto *worklogPage = new QWidget(this);
-    auto *worklogLayout = new QVBoxLayout(worklogPage);
-    worklogLayout->setContentsMargins(0, 0, 0, 0);
-    worklogLayout->addWidget(m_worklogs, 1);
-    worklogLayout->addLayout(worklogActions);
-
-    m_tabs = new QTabWidget(this);
-    m_tabs->addTab(m_description, tr("Description"));
-    m_tabs->addTab(commentsPage, tr("Comments"));
-    m_tabs->addTab(worklogPage, tr("Work log"));
-
-    auto *layout = new QVBoxLayout(this);
-    layout->addWidget(m_heading);
-    layout->addLayout(actions);
-    layout->addWidget(m_fields);
-    layout->addWidget(m_tabs, 1);
+    connect(ui->openInBrowser, &QPushButton::clicked, this, &IssueDetailWidget::openInBrowser);
+    connect(ui->applyTransition, &QPushButton::clicked, this, &IssueDetailWidget::applyTransition);
+    connect(ui->addComment, &QPushButton::clicked, this, &IssueDetailWidget::submitComment);
+    connect(ui->logWork, &QPushButton::clicked, this, &IssueDetailWidget::logWork);
 
     clear();
+}
+
+IssueDetailWidget::~IssueDetailWidget()
+{
+    delete ui;
+}
+
+void IssueDetailWidget::setClient(jira::Client *client)
+{
+    m_client = client;
 }
 
 void IssueDetailWidget::clear()
 {
     m_issue = {};
-    m_heading->setText(tr("<i>Select an issue.</i>"));
-    m_fields->clear();
-    m_description->clear();
-    m_comments->clear();
-    m_newComment->clear();
-    m_worklogs->setRowCount(0);
-    m_worklogTotal->clear();
-    m_transitions->clear();
+    ui->heading->setText(tr("<i>Select an issue.</i>"));
+    ui->fields->clear();
+    ui->description->clear();
+    ui->comments->clear();
+    ui->newComment->clear();
+    ui->worklogs->setRowCount(0);
+    ui->worklogTotal->clear();
+    ui->transitions->clear();
     setBusy(false);
 }
 
@@ -142,35 +79,39 @@ void IssueDetailWidget::setBusy(bool busy)
 {
     const bool hasIssue = !m_issue.isNull();
     const bool enabled = hasIssue && !busy;
-    m_openInBrowser->setEnabled(hasIssue);
-    m_applyTransition->setEnabled(enabled && m_transitions->count() > 0);
-    m_transitions->setEnabled(enabled);
-    m_addComment->setEnabled(enabled);
-    m_logWork->setEnabled(enabled);
-    m_newComment->setEnabled(hasIssue);
+    ui->openInBrowser->setEnabled(hasIssue);
+    ui->applyTransition->setEnabled(enabled && ui->transitions->count() > 0);
+    ui->transitions->setEnabled(enabled);
+    ui->addComment->setEnabled(enabled);
+    ui->logWork->setEnabled(enabled);
+    ui->newComment->setEnabled(hasIssue);
 }
 
 void IssueDetailWidget::setIssue(const jira::Issue &issue)
 {
+    if (!m_client) {
+        clear();
+        return;
+    }
     m_issue = issue;
     if (issue.isNull()) {
         clear();
         return;
     }
 
-    m_heading->setText(QStringLiteral("<h3 style='margin-bottom:2px;'>%1 — %2</h3>")
+    ui->heading->setText(QStringLiteral("<h3 style='margin-bottom:2px;'>%1 — %2</h3>")
                                .arg(issue.key.toHtmlEscaped(), issue.summary.toHtmlEscaped()));
     renderFields();
 
     // v2 descriptions are wiki markup, not HTML; showing them as plain text is
     // honest, where feeding them to a rich-text view would mangle the markup.
-    m_description->setPlainText(issue.description.isEmpty() ? tr("No description.") : issue.description);
+    ui->description->setPlainText(issue.description.isEmpty() ? tr("No description.") : issue.description);
 
-    m_comments->setHtml(tr("<i>Loading comments…</i>"));
-    m_worklogs->setRowCount(0);
-    m_worklogTotal->clear();
-    m_transitions->clear();
-    m_newComment->clear();
+    ui->comments->setHtml(tr("<i>Loading comments…</i>"));
+    ui->worklogs->setRowCount(0);
+    ui->worklogTotal->clear();
+    ui->transitions->clear();
+    ui->newComment->clear();
 
     setBusy(false);
     reloadComments();
@@ -202,7 +143,7 @@ void IssueDetailWidget::renderFields()
         table += fieldRow(tr("Estimate"), jira::formatDuration(m_issue.originalEstimateSeconds));
     table += fieldRow(tr("Updated"), formatTimestamp(m_issue.updated));
     table += QStringLiteral("</table>");
-    m_fields->setText(table);
+    ui->fields->setText(table);
 }
 
 void IssueDetailWidget::openInBrowser()
@@ -221,7 +162,7 @@ void IssueDetailWidget::reloadComments()
             return;   // selection moved on while the request was in flight
         const QList<jira::Comment> comments = jira::Comment::listFromJson(body.toObject());
         if (comments.isEmpty()) {
-            m_comments->setHtml(tr("<i>No comments.</i>"));
+            ui->comments->setHtml(tr("<i>No comments.</i>"));
             return;
         }
         QString html;
@@ -232,11 +173,11 @@ void IssueDetailWidget::reloadComments()
                                  comment.body.toHtmlEscaped().replace(QLatin1Char('\n'),
                                                                       QLatin1String("<br/>")));
         }
-        m_comments->setHtml(html);
+        ui->comments->setHtml(html);
     });
     connect(reply, &jira::Reply::failed, this, [this, key](const jira::Error &error) {
         if (m_issue.key == key)
-            m_comments->setHtml(tr("<i>Could not load comments: %1</i>").arg(error.message.toHtmlEscaped()));
+            ui->comments->setHtml(tr("<i>Could not load comments: %1</i>").arg(error.message.toHtmlEscaped()));
     });
 }
 
@@ -248,18 +189,18 @@ void IssueDetailWidget::reloadWorklogs()
         if (m_issue.key != key)
             return;
         const QList<jira::Worklog> worklogs = jira::Worklog::listFromJson(body.toObject());
-        m_worklogs->setRowCount(worklogs.size());
+        ui->worklogs->setRowCount(worklogs.size());
         int totalSeconds = 0;
         for (int row = 0; row < worklogs.size(); ++row) {
             const jira::Worklog &worklog = worklogs.at(row);
             totalSeconds += worklog.timeSpentSeconds;
-            m_worklogs->setItem(row, 0, new QTableWidgetItem(formatTimestamp(worklog.started)));
-            m_worklogs->setItem(row, 1, new QTableWidgetItem(worklog.author.label()));
-            m_worklogs->setItem(row, 2, new QTableWidgetItem(worklog.timeSpent));
-            m_worklogs->setItem(row, 3, new QTableWidgetItem(worklog.comment));
+            ui->worklogs->setItem(row, 0, new QTableWidgetItem(formatTimestamp(worklog.started)));
+            ui->worklogs->setItem(row, 1, new QTableWidgetItem(worklog.author.label()));
+            ui->worklogs->setItem(row, 2, new QTableWidgetItem(worklog.timeSpent));
+            ui->worklogs->setItem(row, 3, new QTableWidgetItem(worklog.comment));
         }
-        m_worklogs->resizeColumnsToContents();
-        m_worklogTotal->setText(worklogs.isEmpty()
+        ui->worklogs->resizeColumnsToContents();
+        ui->worklogTotal->setText(worklogs.isEmpty()
                                         ? tr("No work logged yet.")
                                         : tr("%1 entries, %2 in total")
                                                   .arg(worklogs.size())
@@ -267,7 +208,7 @@ void IssueDetailWidget::reloadWorklogs()
     });
     connect(reply, &jira::Reply::failed, this, [this, key](const jira::Error &error) {
         if (m_issue.key == key)
-            m_worklogTotal->setText(tr("Could not load the work log: %1").arg(error.message));
+            ui->worklogTotal->setText(tr("Could not load the work log: %1").arg(error.message));
     });
 }
 
@@ -278,22 +219,22 @@ void IssueDetailWidget::reloadTransitions()
     connect(reply, &jira::Reply::succeeded, this, [this, key](const QJsonValue &body) {
         if (m_issue.key != key)
             return;
-        m_transitions->clear();
+        ui->transitions->clear();
         const QList<jira::Transition> transitions = jira::Transition::listFromJson(body.toObject());
         for (const jira::Transition &transition : transitions) {
             const QString label = transition.toStatus.isEmpty()
                     ? transition.name
                     : tr("%1 → %2").arg(transition.name, transition.toStatus);
-            m_transitions->addItem(label, transition.id);
+            ui->transitions->addItem(label, transition.id);
         }
         if (transitions.isEmpty())
-            m_transitions->addItem(tr("No transitions available"), QString());
+            ui->transitions->addItem(tr("No transitions available"), QString());
         setBusy(false);
     });
     connect(reply, &jira::Reply::failed, this, [this, key](const jira::Error &) {
         if (m_issue.key == key) {
-            m_transitions->clear();
-            m_transitions->addItem(tr("No transitions available"), QString());
+            ui->transitions->clear();
+            ui->transitions->addItem(tr("No transitions available"), QString());
             setBusy(false);
         }
     });
@@ -301,12 +242,12 @@ void IssueDetailWidget::reloadTransitions()
 
 void IssueDetailWidget::applyTransition()
 {
-    const QString transitionId = m_transitions->currentData().toString();
+    const QString transitionId = ui->transitions->currentData().toString();
     if (transitionId.isEmpty() || m_issue.isNull())
         return;
 
     const QString key = m_issue.key;
-    const QString label = m_transitions->currentText();
+    const QString label = ui->transitions->currentText();
     setBusy(true);
 
     jira::Reply *reply = m_client->applyTransition(key, transitionId);
@@ -325,7 +266,7 @@ void IssueDetailWidget::applyTransition()
 
 void IssueDetailWidget::submitComment()
 {
-    const QString body = m_newComment->toPlainText().trimmed();
+    const QString body = ui->newComment->toPlainText().trimmed();
     if (body.isEmpty() || m_issue.isNull())
         return;
 
@@ -334,7 +275,7 @@ void IssueDetailWidget::submitComment()
     jira::Reply *reply = m_client->addComment(key, body);
     connect(reply, &jira::Reply::succeeded, this, [this, key] {
         if (m_issue.key == key) {
-            m_newComment->clear();
+            ui->newComment->clear();
             reloadComments();
         }
         emit statusMessage(tr("Comment added to %1.").arg(key));

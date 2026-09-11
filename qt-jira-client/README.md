@@ -18,7 +18,7 @@ itself. v2 is available on Cloud too, so one code path covers every instance.
 
 ## What it does
 
-Two screens.
+Three screens.
 
 **My month** answers *"which days am I still short on?"* — the job the
 `jira2.py` Excel report was doing:
@@ -32,7 +32,28 @@ Two screens.
 - a flat work-log table underneath with **Fix version**, **Sprint**, **Merge
   request** and **Test sheet** per entry; the merge request and test sheet open
   in the browser, and double-clicking an issue key jumps to it
-- **Export CSV** for the same rows
+- **Export Excel** writes the two-sheet workbook — a flat `Worklogs` sheet with
+  working hyperlinks, and the colour-banded `Calendar` sheet — or **Export CSV**
+  for the rows alone
+
+**Sprint** is the task list and its stopwatch:
+
+![The sprint list](docs/sprint.png)
+
+- the issues in your open sprint that Jira still assigns to **you**
+- **Start**/**Stop** a timer on the selected task. Exactly one runs at a time —
+  starting another banks the first one's time and takes over.
+- tracked time is **local only**. Nothing is ever written to Jira: log the real
+  figure yourself, then **Mark logged** clears the stopwatch and puts the
+  figure (`1h 05m`) on the clipboard to paste in.
+- a task drops off the list when Jira stops assigning it to you — that is what
+  makes it done. The exception is a task still holding tracked time or being
+  timed right now: that one stays, flagged *no longer yours*, so an hour of
+  timing is not thrown away by somebody else's reassignment. **Remove** clears
+  it once you are finished.
+- the filter is editable, because `openSprints()` needs Jira Software. Without
+  it, something like `assignee = currentUser() AND resolution = Unresolved`
+  works.
 
 **Search** is the general issue browser:
 
@@ -146,14 +167,32 @@ jiradesk --help
 ctest --test-dir build --output-on-failure
 ```
 
-40 cases over the parts that are painful to debug against a live server: base
+57 cases over the parts that are painful to debug against a live server: base
 URL normalisation and context paths, REST endpoint construction, both
 authorization headers, Jira's `+0000` timestamp format in both directions,
 duration parsing, the shape of every payload the client reads (including issues
-with the nulls Jira sends for unassigned fields), and the error bodies. No
-network and no credentials — nothing here talks to a Jira.
+with the nulls Jira sends for unassigned fields), and the error bodies.
+
+Also sprint parsing in both of Jira's shapes, test-sheet and merge-request
+matching, and the day banding — that a day with nothing logged still appears,
+that a day in the future is never "missing", and that an over-full day does not
+offset a short one. And the workbook writer, which produces a real file whose
+container and XML escaping are then checked, and the task tracker: one timer at
+a time, and the rules for dropping a task that is no longer yours.
+
+No network and no credentials — nothing here talks to a Jira.
 
 ## Layout
+
+All seven screens are Qt Designer forms: each `src/ui/*.ui` opens in Designer,
+and AUTOUIC turns it into a `ui_*.h` the matching `.cpp` includes. Layout,
+labels, tooltips and shortcuts are edited in Designer; the `.cpp` files hold
+behaviour only.
+
+Three widgets — `IssueDetailWidget`, `SprintWidget` and `TimesheetWidget` — are
+promoted inside `mainwindow.ui`, so each takes only a parent in its constructor
+and receives the Jira client afterwards through `setClient()`. That is what lets
+Designer instantiate them.
 
 ```
 src/
@@ -164,12 +203,16 @@ src/
     jiratypes.{h,cpp}       payload structs and their JSON parsing
     timesheet.{h,cpp}       grouping worklogs by day, and the short-day bands
     timesheetloader.{h,cpp} the month pipeline, with bounded requests in flight
+    timesheetexport.{h,cpp} the two-sheet workbook
+    tasktracker.{h,cpp}     the sprint task list and its local stopwatch
+    xlsxwriter.{h,cpp}      a small .xlsx writer -- see below
   ui/
     mainwindow.{h,cpp}      JQL bar, paged results, status bar
     connectiondialog.{h,cpp}  server, auth mode, token, TLS, test connection
     issuetablemodel.{h,cpp}   QAbstractTableModel over a page of results
     issuedetailwidget.{h,cpp} fields, description, comments, work log, transitions
     logworkdialog.{h,cpp}     one worklog entry
+    sprintwidget.{h,cpp}      the sprint task list and timer
     timesheetwidget.{h,cpp}   the month calendar and work-log table
     timesheetsettingsdialog.{h,cpp}  the per-instance conventions above
 tests/
@@ -179,6 +222,19 @@ tests/
 Every request returns a `jira::Reply` that emits exactly one of
 `succeeded`/`failed` and then deletes itself, so a call site is a lambda rather
 than another pair of signals on the client.
+
+## The .xlsx writer
+
+No spreadsheet library is used. An `.xlsx` is a ZIP of XML parts, so
+`xlsxwriter` writes the handful Excel insists on — content types, workbook,
+styles, a worksheet per sheet, and external hyperlink relationships — and stores
+them uncompressed. A month of worklogs is a few tens of kilobytes, so the
+arithmetic stays simple enough to check by eye instead of pulling in a
+compression dependency.
+
+It covers only what these two sheets need: text and numeric cells, nine fixed
+styles, column widths, row heights and external hyperlinks. It is not a general
+spreadsheet writer and is not meant to become one.
 
 ## Endpoints used
 
@@ -204,8 +260,11 @@ will accept in a query string.
 - **No "specifications" column.** Fix version, sprint, merge request and test
   sheet are there; if specifications live in an attachment or a link too, it is
   a marker away.
-- **No .xlsx export.** The month view replaces the spreadsheet on screen and
-  exports CSV; it does not write the two-sheet workbook.
+- **Tracked time never reaches Jira.** That is deliberate: the stopwatch is a
+  reminder, and the real worklog is written by hand.
+- **A timer does not survive quitting.** Its time is banked on exit; it does not
+  resume on the next launch, because counting the hours the machine was off
+  would book a whole night against a task.
 - **Weekends are ignored**, and every working day is assumed to be a full day —
   there is no holiday or part-time calendar.
 - **A transition needing a screen field will fail**, with Jira's own message

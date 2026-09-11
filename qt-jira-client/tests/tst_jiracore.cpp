@@ -2,11 +2,15 @@
 #include "core/jiraclient.h"
 #include "core/jiratypes.h"
 #include "core/timesheet.h"
+#include "core/tasktracker.h"
+#include "core/timesheetexport.h"
 #include "core/timesheetloader.h"
+#include "core/xlsxwriter.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
@@ -48,6 +52,12 @@ private slots:
     void includesDaysWithNothingLogged();
     void buildsWorklogAuthorJql();
     void formatsCalendarLine();
+    void namesSpreadsheetColumns();
+    void writesAReadableWorkbook();
+    void formatsTrackedTime();
+    void runsOneTimerAtATime();
+    void dropsTasksNoLongerAssignedToMe();
+    void keepsUnassignedTasksThatHoldTime();
     void validatesWorklogDurations_data();
     void validatesWorklogDurations();
 };
@@ -632,6 +642,169 @@ void TestJiraCore::formatsCalendarLine()
     QVERIFY(!bare.hasSprint());
     QVERIFY(!bare.hasTestSheet());
     QVERIFY(!bare.hasMergeRequest());
+}
+
+void TestJiraCore::namesSpreadsheetColumns()
+{
+    QCOMPARE(xlsx::Sheet::columnName(1), QStringLiteral("A"));
+    QCOMPARE(xlsx::Sheet::columnName(26), QStringLiteral("Z"));
+    QCOMPARE(xlsx::Sheet::columnName(27), QStringLiteral("AA"));
+    QCOMPARE(xlsx::Sheet::columnName(52), QStringLiteral("AZ"));
+    QCOMPARE(xlsx::Sheet::columnName(53), QStringLiteral("BA"));
+    QCOMPARE(xlsx::Sheet::cellReference(7, 1), QStringLiteral("A7"));
+    QCOMPARE(xlsx::Sheet::cellReference(1, 28), QStringLiteral("AB1"));
+}
+
+void TestJiraCore::writesAReadableWorkbook()
+{
+    QTemporaryDir directory;
+    QVERIFY(directory.isValid());
+    const QString path = directory.filePath(QStringLiteral("book.xlsx"));
+
+    jira::TimesheetEntry entry;
+    entry.day = QDate(2026, 9, 8);
+    entry.issueKey = QStringLiteral("CADIM-101");
+    entry.summary = QStringLiteral("Rotate the <signing> certificate & key");   // XML-hostile
+    entry.fixVersions = QStringLiteral("1.4.0");
+    entry.sprint = QStringLiteral("Sprint 12");
+    entry.mergeRequestUrl = QStringLiteral("https://gitlab.example.com/a/b/-/merge_requests/8");
+    entry.testSheetName = QStringLiteral("CADIM-101_TestSheet.xlsx");
+    entry.testSheetUrl = QStringLiteral("https://jira.example.com/secure/attachment/10/s.xlsx");
+    entry.hours = 6.0;
+
+    jira::TimesheetRules rules;
+    const QList<jira::DaySummary> days = jira::summariseDays(
+            {entry}, QDate(2026, 9, 1), QDate(2026, 9, 30), QDate(2026, 9, 11), rules);
+
+    QString error;
+    QVERIFY2(jira::exportTimesheetWorkbook(path, {entry}, days, QDate(2026, 9, 1), rules, &error),
+             qPrintable(error));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QByteArray archive = file.readAll();
+    file.close();
+
+    // A ZIP container whose first entry is the part Excel looks for first.
+    QVERIFY(archive.size() > 1000);
+    QVERIFY(archive.startsWith("PK\x03\x04"));
+    QVERIFY(archive.contains("[Content_Types].xml"));
+    QVERIFY(archive.contains("xl/worksheets/sheet1.xml"));
+    QVERIFY(archive.contains("xl/worksheets/sheet2.xml"));
+    QVERIFY(archive.contains("xl/styles.xml"));
+    // The end-of-central-directory record has to be there or nothing can open it.
+    QVERIFY(archive.contains("PK\x05\x06"));
+
+    // The hostile summary must have been escaped rather than written raw.
+    QVERIFY(archive.contains("Rotate the &lt;signing&gt; certificate &amp; key"));
+    QVERIFY(!archive.contains("<signing>"));
+
+    QCOMPARE(jira::suggestedWorkbookName(QDate(2026, 9, 1)),
+             QStringLiteral("Jira_Worklog_Calendar_2026_09.xlsx"));
+}
+
+void TestJiraCore::formatsTrackedTime()
+{
+    QCOMPARE(jira::formatStopwatch(0), QStringLiteral("0:00:00"));
+    QCOMPARE(jira::formatStopwatch(59), QStringLiteral("0:00:59"));
+    QCOMPARE(jira::formatStopwatch(3600), QStringLiteral("1:00:00"));
+    QCOMPARE(jira::formatStopwatch(3922), QStringLiteral("1:05:22"));
+    QCOMPARE(jira::formatStopwatch(-5), QStringLiteral("0:00:00"));
+
+    QCOMPARE(jira::formatTrackedDuration(3922), QStringLiteral("1h 05m"));
+    QCOMPARE(jira::formatTrackedDuration(3600), QStringLiteral("1h"));
+    QCOMPARE(jira::formatTrackedDuration(900), QStringLiteral("15m"));
+    QCOMPARE(jira::formatTrackedDuration(30), QStringLiteral("0m"));
+}
+
+void TestJiraCore::runsOneTimerAtATime()
+{
+    jira::TaskTracker tracker;
+    const auto issue = [](const QString &key) {
+        jira::Issue i;
+        i.key = key;
+        i.summary = key + QStringLiteral(" summary");
+        return i;
+    };
+    tracker.merge({issue(QStringLiteral("A-1")), issue(QStringLiteral("A-2"))},
+                  {QStringLiteral("A-1"), QStringLiteral("A-2")});
+    QCOMPARE(tracker.tasks().size(), 2);
+    QVERIFY(tracker.currentIssueKey().isEmpty());
+
+    tracker.start(QStringLiteral("A-1"));
+    QCOMPARE(tracker.currentIssueKey(), QStringLiteral("A-1"));
+    QVERIFY(tracker.tasks().at(tracker.indexOf(QStringLiteral("A-1"))).isRunning());
+
+    // Starting another must stop the first, not run both.
+    tracker.start(QStringLiteral("A-2"));
+    QCOMPARE(tracker.currentIssueKey(), QStringLiteral("A-2"));
+    QVERIFY(!tracker.tasks().at(tracker.indexOf(QStringLiteral("A-1"))).isRunning());
+    QVERIFY(tracker.tasks().at(tracker.indexOf(QStringLiteral("A-2"))).isRunning());
+
+    tracker.stop();
+    QVERIFY(!tracker.tasks().at(tracker.indexOf(QStringLiteral("A-2"))).isRunning());
+
+    // Banked time survives a stop and is cleared only on demand.
+    jira::TrackedTask manual;
+    manual.trackedSeconds = 120;
+    QCOMPARE(manual.elapsedSeconds(), qint64(120));
+    manual.runningSince = QDateTime::currentDateTime().addSecs(-30);
+    QCOMPARE(manual.elapsedSeconds(), qint64(150));
+}
+
+void TestJiraCore::dropsTasksNoLongerAssignedToMe()
+{
+    jira::TaskTracker tracker;
+    const auto issue = [](const QString &key) {
+        jira::Issue i;
+        i.key = key;
+        return i;
+    };
+
+    tracker.merge({issue(QStringLiteral("A-1")), issue(QStringLiteral("A-2"))},
+                  {QStringLiteral("A-1"), QStringLiteral("A-2")});
+    QCOMPARE(tracker.tasks().size(), 2);
+
+    // A-2 comes back from Jira assigned to somebody else: done, so it goes.
+    tracker.merge({issue(QStringLiteral("A-1")), issue(QStringLiteral("A-2"))},
+                  {QStringLiteral("A-1")});
+    QCOMPARE(tracker.tasks().size(), 1);
+    QCOMPARE(tracker.tasks().first().issueKey, QStringLiteral("A-1"));
+
+    // An issue the search did not return at all is left alone -- it may have
+    // moved sprint, or the response may have been partial. Not the same as done.
+    tracker.merge({}, {});
+    QCOMPARE(tracker.tasks().size(), 1);
+}
+
+void TestJiraCore::keepsUnassignedTasksThatHoldTime()
+{
+    jira::Issue one;
+    one.key = QStringLiteral("A-1");
+
+    // Nothing tracked and not running: reassignment deletes it outright.
+    {
+        jira::TaskTracker idle;
+        idle.merge({one}, {QStringLiteral("A-1")});
+        idle.merge({one}, {});
+        QVERIFY(idle.tasks().isEmpty());
+    }
+
+    // Being timed right now: kept and flagged instead, even though a task
+    // started this same second has no elapsed whole seconds yet.
+    jira::TaskTracker tracker;
+    tracker.merge({one}, {QStringLiteral("A-1")});
+    tracker.start(QStringLiteral("A-1"));
+    QCOMPARE(tracker.tasks().first().elapsedSeconds(), qint64(0));
+
+    tracker.merge({one}, {});   // reassigned away while the clock ran
+    QCOMPARE(tracker.tasks().size(), 1);
+    QVERIFY(tracker.tasks().first().unassigned);
+
+    // Once it is explicitly removed it is gone for good.
+    tracker.remove(QStringLiteral("A-1"));
+    QVERIFY(tracker.tasks().isEmpty());
+    QVERIFY(tracker.currentIssueKey().isEmpty());
 }
 
 void TestJiraCore::validatesWorklogDurations_data()

@@ -1,32 +1,29 @@
 #include "mainwindow.h"
+#include "ui_mainwindow.h"
 
 #include "connectiondialog.h"
 #include "core/jiraclient.h"
 #include "issuedetailwidget.h"
 #include "issuetablemodel.h"
+#include "sprintwidget.h"
 #include "timesheetsettingsdialog.h"
 #include "timesheetwidget.h"
 
-#include <QAction>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QHeaderView>
-#include <QJsonObject>
-#include <QKeySequence>
 #include <QLabel>
+#include <QJsonObject>
 #include <QLineEdit>
-#include <QMenu>
-#include <QMenuBar>
 #include <QMessageBox>
 #include <QProgressBar>
 #include <QSettings>
 #include <QSortFilterProxyModel>
 #include <QSplitter>
 #include <QStatusBar>
-#include <QTabWidget>
 #include <QTableView>
-#include <QToolBar>
+#include <QToolButton>
 
 namespace {
 
@@ -51,159 +48,123 @@ const QStringList &defaultQueries()
 
 MainWindow::MainWindow(jira::Client *client, QWidget *parent)
     : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
     , m_client(client)
     , m_model(new IssueTableModel(this))
     , m_proxy(new QSortFilterProxyModel(this))
 {
-    setupUi();
+    ui->setupUi(this);
+
+    // The promoted widgets are built by setupUi with only a parent, so they are
+    // handed the client here.
+    ui->detail->setClient(client);
+    ui->sprint->setClient(client);
+    ui->timesheet->setClient(client);
+
+    m_proxy->setSourceModel(m_model);
+    m_proxy->setSortRole(IssueTableModel::SortRole);
+    m_proxy->setDynamicSortFilter(false);
+    ui->issueTable->setModel(m_proxy);
+    ui->issueTable->horizontalHeader()->setSectionResizeMode(IssueTableModel::SummaryColumn,
+                                                             QHeaderView::Stretch);
+
+    ui->jql->lineEdit()->setPlaceholderText(
+            tr("JQL — e.g. project = OPS AND status = \"In Progress\""));
+    ui->jql->lineEdit()->setClearButtonEnabled(true);
+
+    // The busy indicator belongs in the status bar, which the .ui cannot place.
+    auto *busy = new QProgressBar(this);
+    busy->setObjectName(QStringLiteral("busy"));
+    busy->setRange(0, 0);
+    busy->setMaximumWidth(120);
+    busy->setTextVisible(false);
+    busy->setVisible(false);
+
+    auto *connectionLabel = new QLabel(tr("Not connected"), this);
+    connectionLabel->setObjectName(QStringLiteral("connectionLabel"));
+    auto *resultLabel = new QLabel(this);
+    resultLabel->setObjectName(QStringLiteral("resultLabel"));
+
+    statusBar()->addPermanentWidget(resultLabel);
+    statusBar()->addPermanentWidget(busy);
+    statusBar()->addWidget(connectionLabel);
+
+    connectUi();
     loadQueryHistory();
 
+    QSettings settings;
+    if (!restoreGeometry(settings.value(QLatin1String(kGeometryKey)).toByteArray()))
+        resize(1280, 800);
+    if (!ui->splitter->restoreState(settings.value(QLatin1String(kSplitterKey)).toByteArray()))
+        ui->splitter->setSizes({720, 520});
+
+    updatePagingControls();
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::connectUi()
+{
+    connect(ui->actionConnect, &QAction::triggered, this, &MainWindow::showConnectionDialog);
+    connect(ui->actionRefresh, &QAction::triggered, this, &MainWindow::runSearch);
+    connect(ui->actionTimesheetSettings, &QAction::triggered, this,
+            &MainWindow::showTimesheetSettings);
+    connect(ui->actionQuit, &QAction::triggered, this, &QWidget::close);
+    connect(ui->actionAbout, &QAction::triggered, this, &MainWindow::showAbout);
+    connect(ui->actionForgetToken, &QAction::triggered, this, [this] {
+        jira::Credentials::forgetToken();
+        statusBar()->showMessage(tr("The stored token was removed. It stays in use until you quit."),
+                                 6000);
+    });
+
+    connect(ui->search, &QPushButton::clicked, this, &MainWindow::runSearch);
+    connect(ui->previousPage, &QToolButton::clicked, this, &MainWindow::previousPage);
+    connect(ui->nextPage, &QToolButton::clicked, this, &MainWindow::nextPage);
+    connect(ui->jql->lineEdit(), &QLineEdit::returnPressed, this, &MainWindow::runSearch);
+
+    connect(ui->issueTable->selectionModel(), &QItemSelectionModel::currentRowChanged,
+            this, &MainWindow::issueSelected);
+
+    connect(ui->detail, &IssueDetailWidget::issueChanged, this, &MainWindow::refreshIssue);
+    connect(ui->detail, &IssueDetailWidget::errorOccurred, this, &MainWindow::showError);
+    connect(ui->detail, &IssueDetailWidget::statusMessage, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 6000);
+    });
+
+    connect(ui->sprint, &SprintWidget::errorOccurred, this, &MainWindow::showError);
+    connect(ui->sprint, &SprintWidget::issueActivated, this, &MainWindow::openIssueByKey);
+    connect(ui->sprint, &SprintWidget::statusMessage, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 6000);
+    });
+
+    connect(ui->timesheet, &TimesheetWidget::errorOccurred, this, &MainWindow::showError);
+    connect(ui->timesheet, &TimesheetWidget::issueActivated, this, &MainWindow::openIssueByKey);
+    connect(ui->timesheet, &TimesheetWidget::statusMessage, this, [this](const QString &message) {
+        statusBar()->showMessage(message, 6000);
+    });
+
+    connect(ui->splitter, &QSplitter::splitterMoved, this, [this] {
+        QSettings().setValue(QLatin1String(kSplitterKey), ui->splitter->saveState());
+    });
+
     connect(m_client, &jira::Client::busyChanged, this, [this](bool busy) {
-        m_busy->setVisible(busy);
+        if (auto *bar = findChild<QProgressBar *>(QStringLiteral("busy")))
+            bar->setVisible(busy);
         // Strictly paired: one push per busy period, one pop when it ends.
         if (busy)
             QApplication::setOverrideCursor(Qt::BusyCursor);
         else
             QApplication::restoreOverrideCursor();
     });
-
-    QSettings settings;
-    if (!restoreGeometry(settings.value(QLatin1String(kGeometryKey)).toByteArray()))
-        resize(1280, 800);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
     QSettings().setValue(QLatin1String(kGeometryKey), saveGeometry());
     QMainWindow::closeEvent(event);
-}
-
-void MainWindow::setupUi()
-{
-    setWindowTitle(tr("JiraDesk"));
-
-    m_jql = new QComboBox(this);
-    m_jql->setEditable(true);
-    m_jql->setInsertPolicy(QComboBox::NoInsert);
-    m_jql->setMinimumWidth(420);
-    m_jql->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    m_jql->lineEdit()->setPlaceholderText(tr("JQL — e.g. project = OPS AND status = \"In Progress\""));
-    m_jql->lineEdit()->setClearButtonEnabled(true);
-    connect(m_jql->lineEdit(), &QLineEdit::returnPressed, this, &MainWindow::runSearch);
-
-    auto *toolBar = addToolBar(tr("Search"));
-    toolBar->setMovable(false);
-    toolBar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-
-    auto *connectAction = toolBar->addAction(tr("Connect…"), this, &MainWindow::showConnectionDialog);
-    connectAction->setToolTip(tr("Choose the Jira server and API token"));
-    toolBar->addSeparator();
-    toolBar->addWidget(m_jql);
-
-    m_searchAction = toolBar->addAction(tr("Search"), this, &MainWindow::runSearch);
-    m_searchAction->setShortcut(QKeySequence::Find);
-    m_previousAction = toolBar->addAction(tr("◀"), this, &MainWindow::previousPage);
-    m_previousAction->setToolTip(tr("Previous page"));
-    m_nextAction = toolBar->addAction(tr("▶"), this, &MainWindow::nextPage);
-    m_nextAction->setToolTip(tr("Next page"));
-
-    m_proxy->setSourceModel(m_model);
-    m_proxy->setSortRole(IssueTableModel::SortRole);
-    m_proxy->setDynamicSortFilter(false);
-
-    m_table = new QTableView(this);
-    m_table->setModel(m_proxy);
-    m_table->setSortingEnabled(true);
-    m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_table->setAlternatingRowColors(true);
-    m_table->verticalHeader()->setVisible(false);
-    m_table->horizontalHeader()->setStretchLastSection(false);
-    m_table->horizontalHeader()->setSectionResizeMode(IssueTableModel::SummaryColumn, QHeaderView::Stretch);
-    m_table->setWordWrap(false);
-    connect(m_table->selectionModel(), &QItemSelectionModel::currentRowChanged,
-            this, &MainWindow::issueSelected);
-
-    m_detail = new IssueDetailWidget(m_client, this);
-    connect(m_detail, &IssueDetailWidget::issueChanged, this, &MainWindow::refreshIssue);
-    connect(m_detail, &IssueDetailWidget::errorOccurred, this, &MainWindow::showError);
-    connect(m_detail, &IssueDetailWidget::statusMessage, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 6000);
-    });
-
-    auto *splitter = new QSplitter(Qt::Horizontal, this);
-    splitter->addWidget(m_table);
-    splitter->addWidget(m_detail);
-    splitter->setStretchFactor(0, 3);
-    splitter->setStretchFactor(1, 2);
-    splitter->setObjectName(QStringLiteral("mainSplitter"));
-
-    m_timesheet = new TimesheetWidget(m_client, this);
-    connect(m_timesheet, &TimesheetWidget::errorOccurred, this, &MainWindow::showError);
-    connect(m_timesheet, &TimesheetWidget::issueActivated, this, &MainWindow::openIssueByKey);
-    connect(m_timesheet, &TimesheetWidget::statusMessage, this, [this](const QString &message) {
-        statusBar()->showMessage(message, 6000);
-    });
-
-    m_tabs = new QTabWidget(this);
-    m_tabs->addTab(splitter, tr("Search"));
-    m_tabs->addTab(m_timesheet, tr("My month"));
-    setCentralWidget(m_tabs);
-
-    QSettings settings;
-    if (!splitter->restoreState(settings.value(QLatin1String(kSplitterKey)).toByteArray()))
-        splitter->setSizes({720, 520});
-    connect(splitter, &QSplitter::splitterMoved, this, [splitter] {
-        QSettings().setValue(QLatin1String(kSplitterKey), splitter->saveState());
-    });
-
-    m_connectionLabel = new QLabel(tr("Not connected"), this);
-    m_resultLabel = new QLabel(this);
-    m_busy = new QProgressBar(this);
-    m_busy->setRange(0, 0);
-    m_busy->setMaximumWidth(120);
-    m_busy->setTextVisible(false);
-    m_busy->setVisible(false);
-
-    statusBar()->addPermanentWidget(m_resultLabel);
-    statusBar()->addPermanentWidget(m_busy);
-    statusBar()->addWidget(m_connectionLabel);
-
-    auto *fileMenu = menuBar()->addMenu(tr("&File"));
-    fileMenu->addAction(connectAction);
-    fileMenu->addAction(tr("&Refresh"), QKeySequence::Refresh, this, &MainWindow::runSearch);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("Timesheet settings…"), this, &MainWindow::showTimesheetSettings);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("Forget stored token"), this, [this] {
-        jira::Credentials::forgetToken();
-        statusBar()->showMessage(tr("The stored token was removed. It stays in use until you quit."), 6000);
-    });
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Quit"), QKeySequence::Quit, this, &QWidget::close);
-
-    auto *helpMenu = menuBar()->addMenu(tr("&Help"));
-    helpMenu->addAction(tr("About"), this, [this] {
-        QMessageBox::about(this,
-                           tr("About JiraDesk"),
-                           tr("<h3>JiraDesk</h3>"
-                              "<p>A Qt desktop client for any Jira reachable over the REST API v2 — "
-                              "Jira Server, Data Center or Cloud, at whatever address your instance lives.</p>"
-                              "<p>Authenticates with an API token: a Personal Access Token as a bearer "
-                              "token on Server/Data Center, or e-mail plus token over HTTP Basic on Cloud.</p>"));
-    });
-
-    connect(m_tabs, &QTabWidget::currentChanged, this, [this, toolBar](int index) {
-        const bool onSearch = index == 0;
-        m_jql->setEnabled(onSearch);
-        m_searchAction->setEnabled(onSearch);
-        m_previousAction->setVisible(onSearch);
-        m_nextAction->setVisible(onSearch);
-        toolBar->setVisible(true);
-    });
-
-    updatePagingControls();
 }
 
 void MainWindow::loadQueryHistory()
@@ -214,8 +175,8 @@ void MainWindow::loadQueryHistory()
         if (!history.contains(query))
             history.append(query);
     }
-    m_jql->addItems(history);
-    m_jql->setCurrentIndex(0);
+    ui->jql->addItems(history);
+    ui->jql->setCurrentIndex(0);
 }
 
 void MainWindow::rememberQuery(const QString &jql)
@@ -228,22 +189,22 @@ void MainWindow::rememberQuery(const QString &jql)
         history.removeLast();
     settings.setValue(QLatin1String(kHistoryKey), history);
 
-    const QString current = m_jql->currentText();
-    m_jql->blockSignals(true);
-    m_jql->clear();
+    const QString current = ui->jql->currentText();
+    ui->jql->blockSignals(true);
+    ui->jql->clear();
     QStringList combined = history;
     for (const QString &query : defaultQueries()) {
         if (!combined.contains(query))
             combined.append(query);
     }
-    m_jql->addItems(combined);
-    m_jql->setCurrentText(current);
-    m_jql->blockSignals(false);
+    ui->jql->addItems(combined);
+    ui->jql->setCurrentText(current);
+    ui->jql->blockSignals(false);
 }
 
 void MainWindow::setInitialQuery(const QString &jql)
 {
-    m_jql->setCurrentText(jql);
+    ui->jql->setCurrentText(jql);
 }
 
 void MainWindow::start()
@@ -277,29 +238,48 @@ void MainWindow::showConnectionDialog()
     }
 }
 
+void MainWindow::showAbout()
+{
+    QMessageBox::about(this,
+                       tr("About JiraDesk"),
+                       tr("<h3>JiraDesk</h3>"
+                          "<p>A Qt desktop client for any Jira reachable over the REST API v2 — "
+                          "Jira Server, Data Center or Cloud, at whatever address your instance lives.</p>"
+                          "<p>Authenticates with an API token: a Personal Access Token as a bearer "
+                          "token on Server/Data Center, or a user name plus password or token over "
+                          "HTTP Basic.</p>"));
+}
+
 void MainWindow::verifyIdentity()
 {
     const QString host = QUrl(m_client->credentials().baseUrl).host();
+    auto *connectionLabel = findChild<QLabel *>(QStringLiteral("connectionLabel"));
+
     jira::Reply *reply = m_client->fetchMyself();
-    connect(reply, &jira::Reply::succeeded, this, [this, host](const QJsonValue &body) {
+    connect(reply, &jira::Reply::succeeded, this, [this, host, connectionLabel](const QJsonValue &body) {
         const jira::User me = jira::User::fromJson(body.toObject());
-        m_connectionLabel->setText(tr("%1 on %2").arg(me.label(), host));
-        m_timesheet->setIdentity(me);
-        m_timesheet->refresh();
+        if (connectionLabel)
+            connectionLabel->setText(tr("%1 on %2").arg(me.label(), host));
+        ui->timesheet->setIdentity(me);
+        ui->timesheet->refresh();
+        ui->sprint->setIdentity(me);
+        ui->sprint->refresh();
     });
-    connect(reply, &jira::Reply::failed, this, [this, host](const jira::Error &error) {
-        m_connectionLabel->setText(tr("Not connected to %1").arg(host));
+    connect(reply, &jira::Reply::failed, this, [this, host, connectionLabel](const jira::Error &error) {
+        if (connectionLabel)
+            connectionLabel->setText(tr("Not connected to %1").arg(host));
         showError(error.toString());
     });
 }
 
 void MainWindow::runSearch()
 {
-    const QString jql = m_jql->currentText().trimmed();
+    const QString jql = ui->jql->currentText().trimmed();
     if (jql.isEmpty()) {
         statusBar()->showMessage(tr("Enter a JQL query first."), 4000);
         return;
     }
+    ui->tabs->setCurrentWidget(ui->searchTab);
     m_startAt = 0;
     rememberQuery(jql);
     fetchPage(m_startAt);
@@ -307,30 +287,36 @@ void MainWindow::runSearch()
 
 void MainWindow::fetchPage(int startAt)
 {
-    const QString jql = m_jql->currentText().trimmed();
+    const QString jql = ui->jql->currentText().trimmed();
     if (jql.isEmpty())
         return;
 
+    auto *resultLabel = findChild<QLabel *>(QStringLiteral("resultLabel"));
+
     jira::Reply *reply = m_client->search(jql, startAt, m_pageSize);
-    connect(reply, &jira::Reply::succeeded, this, [this, startAt](const QJsonValue &body) {
+    connect(reply, &jira::Reply::succeeded, this, [this, startAt, resultLabel](const QJsonValue &body) {
         const jira::SearchResult result = jira::SearchResult::fromJson(body.toObject());
         m_startAt = startAt;
         m_total = result.total;
         m_model->setIssues(result.issues);
-        m_table->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
-        m_table->resizeColumnsToContents();
-        m_table->horizontalHeader()->setSectionResizeMode(IssueTableModel::SummaryColumn, QHeaderView::Stretch);
-        m_table->horizontalHeader()->setMinimumSectionSize(60);
+        ui->issueTable->resizeColumnsToContents();
+        ui->issueTable->horizontalHeader()->setSectionResizeMode(IssueTableModel::SummaryColumn,
+                                                                 QHeaderView::Stretch);
+        ui->issueTable->horizontalHeader()->setMinimumSectionSize(60);
+        ui->issueTable->horizontalHeader()->setSortIndicator(-1, Qt::AscendingOrder);
 
         if (result.issues.isEmpty()) {
-            m_detail->clear();
-            m_resultLabel->setText(tr("No matching issues"));
+            ui->detail->clear();
+            if (resultLabel)
+                resultLabel->setText(tr("No matching issues"));
         } else {
-            m_table->selectRow(0);
-            m_resultLabel->setText(tr("%1–%2 of %3")
-                                           .arg(m_startAt + 1)
-                                           .arg(m_startAt + result.issues.size())
-                                           .arg(m_total));
+            ui->issueTable->selectRow(0);
+            if (resultLabel) {
+                resultLabel->setText(tr("%1–%2 of %3")
+                                             .arg(m_startAt + 1)
+                                             .arg(m_startAt + result.issues.size())
+                                             .arg(m_total));
+            }
         }
         updatePagingControls();
     });
@@ -344,8 +330,8 @@ void MainWindow::fetchPage(int startAt)
 
 void MainWindow::updatePagingControls()
 {
-    m_previousAction->setEnabled(m_startAt > 0);
-    m_nextAction->setEnabled(m_startAt + m_model->rowCount() < m_total);
+    ui->previousPage->setEnabled(m_startAt > 0);
+    ui->nextPage->setEnabled(m_startAt + m_model->rowCount() < m_total);
 }
 
 void MainWindow::nextPage()
@@ -363,10 +349,10 @@ void MainWindow::previousPage()
 void MainWindow::issueSelected(const QModelIndex &current)
 {
     if (!current.isValid()) {
-        m_detail->clear();
+        ui->detail->clear();
         return;
     }
-    m_detail->setIssue(m_model->issueAt(m_proxy->mapToSource(current).row()));
+    ui->detail->setIssue(m_model->issueAt(m_proxy->mapToSource(current).row()));
 }
 
 void MainWindow::refreshIssue(const QString &issueKey)
@@ -377,8 +363,8 @@ void MainWindow::refreshIssue(const QString &issueKey)
         if (issue.isNull())
             return;
         m_model->replaceIssue(issue);
-        if (m_detail->currentIssueKey() == issueKey)
-            m_detail->setIssue(issue);
+        if (ui->detail->currentIssueKey() == issueKey)
+            ui->detail->setIssue(issue);
     });
     connect(reply, &jira::Reply::failed, this, [](const jira::Error &) {
         // The write already succeeded; a stale row is not worth a dialog.
@@ -391,14 +377,14 @@ void MainWindow::showTimesheetSettings()
     if (dialog.exec() != QDialog::Accepted)
         return;
     dialog.settings().save();
-    m_timesheet->refresh();
+    ui->timesheet->refresh();
 }
 
 void MainWindow::openIssueByKey(const QString &issueKey)
 {
-    // Jumping from a work log row back to the issue it was booked against.
-    m_tabs->setCurrentIndex(0);
-    m_jql->setCurrentText(QStringLiteral("key = %1").arg(issueKey));
+    // Jumping from a work log or task row back to the issue it belongs to.
+    ui->tabs->setCurrentWidget(ui->searchTab);
+    ui->jql->setCurrentText(QStringLiteral("key = %1").arg(issueKey));
     runSearch();
 }
 

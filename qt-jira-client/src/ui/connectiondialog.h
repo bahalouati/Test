@@ -4,23 +4,24 @@
 
 #include <QDialog>
 
-class QCheckBox;
-class QComboBox;
-class QDialogButtonBox;
-class QLabel;
-class QLineEdit;
 class QPushButton;
+
+QT_BEGIN_NAMESPACE
+namespace Ui { class ConnectionDialog; }
+QT_END_NAMESPACE
 
 namespace jira { class Client; }
 
 // Collects the server URL, the authentication style and the API token, and can
-// prove the combination works before the dialog is accepted.
+// prove the combination works before the dialog is accepted. The layout lives
+// in connectiondialog.ui.
 class ConnectionDialog : public QDialog
 {
     Q_OBJECT
 
 public:
     explicit ConnectionDialog(const jira::Credentials &credentials, QWidget *parent = nullptr);
+    ~ConnectionDialog() override;
 
     jira::Credentials credentials() const;
 
@@ -32,17 +33,7 @@ private slots:
 private:
     void setStatus(const QString &text, bool isError);
 
-    QLineEdit *m_baseUrl;
-    QComboBox *m_authMode;
-    QLabel *m_usernameLabel;
-    QLineEdit *m_username;
-    QLineEdit *m_token;
-    QCheckBox *m_rememberToken;
-    QLineEdit *m_caCertificate;
-    QCheckBox *m_allowInvalidCertificates;
-    QLabel *m_hint;
-    QLabel *m_status;
+    Ui::ConnectionDialog *ui;
     QPushButton *m_testButton;
-    QDialogButtonBox *m_buttons;
     jira::Client *m_probe;
 };
