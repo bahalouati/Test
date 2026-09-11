@@ -4,6 +4,7 @@
 
 #include <QDate>
 #include <QList>
+#include <QSet>
 #include <QString>
 
 // Turning my worklogs into "which days am I short?".
@@ -38,6 +39,7 @@ struct TimesheetEntry {
 // What the day is doing relative to the target.
 enum class DayStatus {
     Future,     // hasn't happened yet -- never counts as missing
+    Holiday,    // marked as leave; owes nothing however empty it is
     Complete,   // at or above a full day
     Partial,    // logged something, but under a full day
     Short       // well under, including nothing at all
@@ -58,14 +60,46 @@ struct DaySummary {
     DayStatus status = DayStatus::Short;
     QList<TimesheetEntry> entries;
 
-    // How far short of a full day this is; 0 for future days and full ones.
+    // How far short of a full day this is; 0 for future days, holidays and
+    // days that are already full.
     double missingHours(const TimesheetRules &rules) const;
+    bool isHoliday() const { return status == DayStatus::Holiday; }
     bool isMissing(const TimesheetRules &rules) const { return missingHours(rules) > 0.0; }
+};
+
+// Days that are not working days for me -- public holidays, leave, anything
+// that should not be counted as missing hours. Kept on this machine, because
+// Jira has no idea when I am off.
+class HolidayCalendar
+{
+public:
+    bool contains(const QDate &day) const { return m_days.contains(day); }
+    void add(const QDate &day);
+    void remove(const QDate &day);
+    // Returns the state the day ended up in.
+    bool toggle(const QDate &day);
+
+    QList<QDate> days() const;
+    int count() const { return int(m_days.size()); }
+    int countIn(const QDate &from, const QDate &to, const TimesheetRules &rules) const;
+    void clear() { m_days.clear(); }
+
+    void load();
+    void save() const;
+
+    static QString storagePath();
+
+private:
+    QSet<QDate> m_days;
 };
 
 QString dayStatusLabel(DayStatus status);
 
-DayStatus classifyDay(const QDate &day, double hours, const QDate &today, const TimesheetRules &rules);
+DayStatus classifyDay(const QDate &day,
+                      double hours,
+                      const QDate &today,
+                      const TimesheetRules &rules,
+                      bool isHoliday = false);
 
 // One DaySummary per working day in [from, to] -- including days with nothing
 // logged, which are exactly the ones worth seeing.
@@ -73,7 +107,8 @@ QList<DaySummary> summariseDays(const QList<TimesheetEntry> &entries,
                                 const QDate &from,
                                 const QDate &to,
                                 const QDate &today,
-                                const TimesheetRules &rules);
+                                const TimesheetRules &rules,
+                                const HolidayCalendar &holidays = HolidayCalendar());
 
 // Hours still owed across every past working day that is short.
 double totalMissingHours(const QList<DaySummary> &days, const TimesheetRules &rules);

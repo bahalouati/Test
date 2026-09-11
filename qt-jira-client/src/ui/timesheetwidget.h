@@ -43,6 +43,8 @@ private slots:
     void loadProgress(int done, int total, const QString &message);
     void exportCsv();
     void exportXlsx();
+    void showCalendarMenu(const QPoint &position);
+    void toggleHoliday();
     void cellActivated(int row, int column);
 
 private:
@@ -51,11 +53,14 @@ private:
     void updateSummary();
     QDate firstOfMonth() const;
     QDate lastOfMonth() const;
+    // The day under the calendar's current cell, or an invalid date.
+    QDate selectedDay() const;
 
     Ui::TimesheetWidget *ui;
     jira::Client *m_client = nullptr;
     jira::TimesheetLoader *m_loader = nullptr;
     jira::TimesheetSettings m_settings;
+    jira::HolidayCalendar m_holidays;
     jira::User m_me;
 
     QList<jira::TimesheetEntry> m_entries;

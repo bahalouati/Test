@@ -23,6 +23,7 @@ enum class Style {
     DayPartial,      // amber fill
     DayShort,        // red fill
     DayFuture,       // grey fill
+    DayHoliday,      // blue fill
     DayPlain         // no fill, wrapped, top-aligned
 };
 
