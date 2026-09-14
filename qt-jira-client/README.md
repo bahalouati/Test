@@ -217,6 +217,68 @@ unquoted, and doubles an embedded quote instead of breaking the field.
 
 No network and no credentials — nothing here talks to a Jira.
 
+## Generating tests
+
+`tools/qtestgen.py` writes the mechanical half of a QTest case from a function
+declaration: the slot pair, the data columns typed from the parameters, the
+`QFETCH` lines, the call, and the comparison.
+
+```bash
+tools/qtestgen.py "QString formatDuration(int seconds)"        # from a signature
+tools/qtestgen.py --header src/core/jiratypes.h --list         # what can it see?
+tools/qtestgen.py --header src/core/jiratypes.h --function issueSortKey
+tools/qtestgen.py --header src/core/tasktracker.h --all --standalone
+```
+
+Give it the header rather than the signature where you can. Reading the header
+is what lets it qualify `TimesheetRules` as `jira::TimesheetRules`, expand a
+returned struct into one expectation column per field, skip the private
+helpers, and build a fixture for a class whose constructor takes arguments.
+
+`--insert tests/tst_jiracore.cpp` splices the slots straight into the existing
+suite — declarations into the `private slots:` block, definitions above
+`QTEST_GUILESS_MAIN`, and any `Q_DECLARE_METATYPE` above the class. It refuses
+to add a slot that is already there.
+
+### What it cannot do
+
+It cannot tell you what the answer should be. It writes the scaffolding and
+names the holes; which inputs are interesting, and what each should produce, is
+the part that is actually the test. So **a generated case fails until someone
+writes it**:
+
+- data rows are named `TODO`, and the body opens with a guard that fails on a
+  row still called that. Rename the rows and the guard goes quiet by itself.
+- a case with nothing to fetch ends in a `QFAIL` naming what is missing.
+
+A skeleton that passed on arrival would be worse than none: `parseDateTime()`
+of an empty string really does return an invalid `QDateTime`, and a placeholder
+row would have sailed through proving nothing. Pass `--no-fail-marker` to drop
+the guards if you would rather have that.
+
+It reads declarations, not C++. Namespaces, structs, access specifiers, inline
+bodies, references, pointers, default arguments and template-argument commas
+are all handled; templates, operators and anything behind the preprocessor are
+skipped. A full parse means libclang, and this is a script with no
+dependencies.
+
+The slot name is a guess at the house style — `formatDuration` becomes
+`formatsDuration` — which reads well for a verb and less well otherwise. Use
+`--name` when it picks badly.
+
+### Checking it
+
+```bash
+python -m unittest discover -s tools -t tools    # the generator's own tests
+tools/compile-check.sh 6                         # or 5
+```
+
+`compile-check.sh` generates a test for every function the core headers declare
+and compiles all 179 of them. It never runs them — they are skeletons, and they
+fail by design. What it proves is that the output is still valid C++ against
+that Qt, which is where the Qt 5 `Q_DECLARE_METATYPE` guard and the column
+types get checked. CI runs it on both Qt majors.
+
 ## Layout
 
 All seven screens are Qt Designer forms: each `src/ui/*.ui` opens in Designer,

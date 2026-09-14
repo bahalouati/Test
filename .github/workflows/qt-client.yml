@@ -45,3 +45,19 @@ jobs:
       # through parsed payloads, not a server.
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      # The test generator writes C++, so the thing worth checking is that its
+      # output still compiles -- on Qt 5 as well, where Q_DECLARE_METATYPE is
+      # not optional. The skeletons are not run: they fail until written.
+      - name: Generated tests compile
+        run: qt-jira-client/tools/compile-check.sh ${{ matrix.qt }}
+
+  tools:
+    name: qtestgen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m unittest discover -s qt-jira-client/tools -t qt-jira-client/tools -v

@@ -28,6 +28,11 @@ issue detail, comments, work logging and workflow transitions, against any
 instance over the REST API v2 with an API token. It shares no code with the
 sync job; see [`qt-jira-client/README.md`](qt-jira-client/README.md).
 
+It ships `qt-jira-client/tools/qtestgen.py`, which writes the mechanical half of
+a QTest case — slot pair, data columns, `QFETCH`, the call — from a C++ function
+declaration. The generated case fails until someone fills in what the answer
+should be, which is the half no tool can write.
+
 ## Quick start
 
 ```bash
