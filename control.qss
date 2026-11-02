@@ -1,0 +1,247 @@
+/* =============================================================================
+   CONTROL ROOM  -  industrial HMI / SCADA theme
+   =============================================================================
+
+   Loaded by loadQss("control") in designs.cpp and applied to the Control Room
+   window only. Edit live without recompiling:
+        QSS_DIR=/path/to/themes ./Showcase --design control
+
+   For an explanation of QSS syntax itself (selectors, #objectName, pseudo-states,
+   sub-controls, rgba alpha 0-255, gradients) see the crash course at the top of
+   aurora.qss. This file explains what each rule DOES.
+
+   DESIGN IDEAS USED HERE
+   ----------------------
+   * Near-black teal background: very low brightness so operators can watch the
+     screen for hours (and a control room is usually dim anyway).
+   * Color is reserved for MEANING, never decoration:
+         teal  = normal / running / information
+         amber = warning / caution
+         red   = critical / fault / emergency
+     Everything else is gray-teal, so an abnormal state is the first thing the eye
+     catches on a calm screen.
+   * Monospace digits for time stamps so columns of numbers line up.
+   * The glowing gauges and the throughput chart are painted in C++ (ArcGauge and
+     LineChart in widgets.cpp), because QSS cannot draw arcs or curves.
+   * "letter-spacing" adds space between characters. It gives the small headings,
+     chips and the E-STOP label their wide "instrument panel" look. It is a newer QSS
+     property: if your Qt version ignores it the text just looks slightly tighter,
+     nothing breaks.
+   * QSS has no text-transform, so panel headings are typed in capitals directly in
+     the C++ code.
+   ============================================================================= */
+
+
+/* -----------------------------------------------------------------------------
+   0. GLOBAL BASELINE
+   ----------------------------------------------------------------------------- */
+
+/* One font for the whole window; Inter first, fallbacks after. */
+* {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+}
+
+/* All plain widgets are transparent so Qt does not paint its default gray boxes
+   behind layouts and labels. Default text color = very pale mint, softer than
+   white against the near-black background. */
+QWidget {
+    background: transparent;
+    color: #d7f5ef;
+}
+
+/* The window background: solid near-black teal. */
+QWidget#root { background: #060d0f; }
+
+
+/* -----------------------------------------------------------------------------
+   1. TOP STATUS BAR
+   ----------------------------------------------------------------------------- */
+
+/* The bar holding plant name, clock, status and buttons: a slightly lighter teal-black
+   than the window, with a thin teal-gray outline. */
+QFrame#top {
+    background: #0b171a;
+    border: 1px solid #16312f;
+    border-radius: 14px;
+}
+
+/* Plant title: bold. */
+QLabel#title {
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 1px;   /* a little extra space between characters */
+}
+/* Location breadcrumb under the title: muted gray-teal. */
+QLabel#crumb {
+    color: #6f9a96;
+    font-weight: 600;
+}
+/* Clock: monospace so digits do not jiggle as seconds change, in the "normal" teal. */
+QLabel#clock {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 15px;
+    color: #2dd4bf;
+    font-weight: 700;
+}
+
+/* "ONLINE" status chip: translucent teal fill + teal border + teal text.
+   The border (alpha 90) makes it read as an indicator lamp rather than a button. */
+QLabel#online {
+    background: rgba(45, 212, 191, 32);
+    color: #2dd4bf;
+    border: 1px solid rgba(45, 212, 191, 90);
+    border-radius: 12px;
+    padding: 4px 12px;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+/* EMERGENCY STOP: the only solid, saturated red on the screen, on purpose.
+   A 2px lighter-red border makes it look like a physical mushroom button. */
+QPushButton#estop {
+    background: #b91c1c;
+    color: white;
+    border: 2px solid #f87171;
+    border-radius: 12px;
+    padding: 9px 20px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+QPushButton#estop:hover { background: #dc2626; }   /* brighter on hover */
+
+/* "Acknowledge" ghost button: outline only, so it does not compete with E-STOP. */
+QPushButton#ghost {
+    background: transparent;
+    border: 1px solid #1f4642;
+    border-radius: 12px;
+    padding: 9px 16px;
+    color: #9bd9d0;
+    font-weight: 700;
+}
+/* Hover: border and text turn the "normal" teal. */
+QPushButton#ghost:hover {
+    border-color: #2dd4bf;
+    color: #2dd4bf;
+}
+
+
+/* -----------------------------------------------------------------------------
+   2. PANELS
+   ----------------------------------------------------------------------------- */
+
+/* Every section of the screen lives in a "panel": a subtle vertical gradient from a
+   slightly lighter teal-black at the top to a darker one at the bottom, so the panel
+   looks lit from above. x1:0,y1:0 -> x2:0,y2:1 means "top to bottom". */
+QFrame#panel {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #0e1c20, stop:1 #0a1417);
+    border: 1px solid #16312f;
+    border-radius: 16px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   3. TYPOGRAPHY
+   ----------------------------------------------------------------------------- */
+
+/* Panel heading ("PROCESS VARIABLES"): small, heavy, muted, widely tracked. The text
+   is typed in capitals in C++ because QSS cannot do text-transform: uppercase. */
+QLabel#h2 {
+    font-size: 11px;
+    font-weight: 800;
+    color: #6f9a96;
+    letter-spacing: 2px;   /* wide tracking = classic instrument-panel label */
+}
+/* Secondary line under an equipment name. */
+QLabel#sub {
+    color: #6f9a96;
+    font-size: 12px;
+}
+/* Equipment name ("Pump A"). */
+QLabel#equip { font-weight: 700; }
+/* Small monospace text. */
+QLabel#mono {
+    font-family: "DejaVu Sans Mono", monospace;
+    color: #9bd9d0;
+    font-size: 12px;
+}
+/* Chart legend labels. */
+QLabel#legend { color: #9bd9d0; }
+
+
+/* -----------------------------------------------------------------------------
+   4. ALARM SEVERITY CHIPS
+   ----------------------------------------------------------------------------- */
+
+/* One recipe, three severities. Each chip = translucent fill (alpha ~35) + a matching
+   border (alpha 80-90) + bright text of the same hue, all small and bold:
+       crit = red    CRITICAL  (needs immediate action)
+       warn = amber  WARNING   (needs attention soon)
+       info = teal   INFO      (for awareness only)                              */
+QLabel#crit {
+    background: rgba(248, 113, 113, 36);
+    color: #f87171;
+    border: 1px solid rgba(248, 113, 113, 90);
+    border-radius: 8px;
+    padding: 2px 9px;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+QLabel#warn {
+    background: rgba(251, 191, 36, 32);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 90);
+    border-radius: 8px;
+    padding: 2px 9px;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+QLabel#info {
+    background: rgba(45, 212, 191, 28);
+    color: #2dd4bf;
+    border: 1px solid rgba(45, 212, 191, 80);
+    border-radius: 8px;
+    padding: 2px 9px;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   5. ALARM TABLE
+   ----------------------------------------------------------------------------- */
+
+/* No frame, no fill: the panel behind it is the background. outline:0 removes the
+   dotted focus rectangle. */
+QTableWidget {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+/* Rows are separated by a hairline in a dark teal that stays quiet. */
+QTableWidget::item {
+    padding-left: 8px;
+    border-bottom: 1px solid #12292a;
+}
+/* Column headings: tiny, heavy and dim, with a slightly brighter underline. */
+QHeaderView::section {
+    background: transparent;
+    color: #4f7a76;
+    border: none;
+    border-bottom: 1px solid #16312f;
+    padding: 6px 8px;
+    font-weight: 800;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+/* Corner square where the headers meet: invisible. */
+QTableCornerButton::section {
+    background: transparent;
+    border: none;
+}
+/* Wrapper widget around the severity chips placed inside table cells. */
+QWidget#cell { background: transparent; }

@@ -1,0 +1,1173 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<ui version="4.0">
+ <class>GuidedForm</class>
+ <widget class="QWidget" name="root">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1360</width>
+    <height>860</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Guided form</string>
+  </property>
+  <layout class="QHBoxLayout" name="outerLayout" stretch="0,1,0">
+   <property name="spacing">
+    <number>28</number>
+   </property>
+   <property name="leftMargin">
+    <number>34</number>
+   </property>
+   <property name="topMargin">
+    <number>30</number>
+   </property>
+   <property name="rightMargin">
+    <number>34</number>
+   </property>
+   <property name="bottomMargin">
+    <number>30</number>
+   </property>
+   <item>
+    <widget class="QWidget" name="leftColumn">
+     <property name="minimumSize">
+      <size>
+       <width>270</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>270</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <layout class="QVBoxLayout" name="leftLayout">
+      <property name="spacing">
+       <number>14</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="brandLabel">
+        <property name="text">
+         <string>◆  Nimbus</string>
+        </property>
+        <property name="role" stdset="0">
+         <string>brand</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="spacer3">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Fixed</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>18</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="sideTitle">
+        <property name="text">
+         <string>Create your workspace</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="role" stdset="0">
+         <string>sideTitle</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="sideSub">
+        <property name="text">
+         <string>About a minute. We will guide you through every field.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="role" stdset="0">
+         <string>sub</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="spacer4">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Fixed</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>10</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="ringRow" stretch="0,1">
+        <property name="spacing">
+         <number>14</number>
+        </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="ProgressRing" name="ring" />
+        </item>
+        <item>
+         <layout class="QVBoxLayout" name="ringTexts">
+          <property name="spacing">
+           <number>1</number>
+          </property>
+          <property name="leftMargin">
+           <number>0</number>
+          </property>
+          <property name="topMargin">
+           <number>0</number>
+          </property>
+          <property name="rightMargin">
+           <number>0</number>
+          </property>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <spacer name="spacer1">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QLabel" name="ringTitle">
+            <property name="text">
+             <string>Profile complete</string>
+            </property>
+            <property name="role" stdset="0">
+             <string>ringTitle</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="ringSub">
+            <property name="text">
+             <string>0 of 8 required fields</string>
+            </property>
+            <property name="role" stdset="0">
+             <string>sub</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer2">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <spacer name="spacer5">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Fixed</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>14</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="StepList" name="stepList" />
+      </item>
+      <item>
+       <spacer name="spacer6">
+        <property name="orientation">
+         <enum>Qt::Vertical</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>40</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="footerLabel">
+        <property name="text">
+         <string>Nimbus setup  ·  v2.4</string>
+        </property>
+        <property name="role" stdset="0">
+         <string>sub</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QStackedWidget" name="stack">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+     <widget class="QWidget" name="formPage">
+      <layout class="QVBoxLayout" name="formPageLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QFrame" name="formCard">
+         <property name="role" stdset="0">
+          <string>card</string>
+         </property>
+         <layout class="QVBoxLayout" name="formCardLayout" stretch="0,0,1,0">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <property name="leftMargin">
+           <number>30</number>
+          </property>
+          <property name="topMargin">
+           <number>38</number>
+          </property>
+          <property name="rightMargin">
+           <number>30</number>
+          </property>
+          <property name="bottomMargin">
+           <number>30</number>
+          </property>
+          <item>
+           <widget class="QWidget" name="headerBox">
+            <layout class="QVBoxLayout" name="headerLayout">
+             <property name="spacing">
+              <number>6</number>
+             </property>
+             <property name="leftMargin">
+              <number>14</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>14</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="stepEyebrow">
+               <property name="text">
+                <string>STEP 1 OF 3</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>eyebrow</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="stepHeading">
+               <property name="text">
+                <string>Tell us about you</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>h1</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="stepBlurb">
+               <property name="text">
+                <string>We use this to personalise your workspace. It takes under a minute.</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+               <property name="role" stdset="0">
+                <string>sub</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer12">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>22</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QStackedWidget" name="formPages">
+            <property name="currentIndex">
+             <number>0</number>
+            </property>
+            <widget class="QWidget" name="stepPage1">
+             <layout class="QVBoxLayout" name="stepLayout1">
+              <property name="spacing">
+               <number>10</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <spacer name="spacer7">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+            <widget class="QWidget" name="stepPage2">
+             <layout class="QVBoxLayout" name="stepLayout2">
+              <property name="spacing">
+               <number>10</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <spacer name="spacer8">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+            <widget class="QWidget" name="stepPage3">
+             <layout class="QVBoxLayout" name="stepLayout3">
+              <property name="spacing">
+               <number>10</number>
+              </property>
+              <property name="leftMargin">
+               <number>0</number>
+              </property>
+              <property name="topMargin">
+               <number>0</number>
+              </property>
+              <property name="rightMargin">
+               <number>0</number>
+              </property>
+              <property name="bottomMargin">
+               <number>0</number>
+              </property>
+              <item>
+               <spacer name="spacer9">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="navLayout">
+            <property name="spacing">
+             <number>12</number>
+            </property>
+            <property name="leftMargin">
+             <number>14</number>
+            </property>
+            <property name="topMargin">
+             <number>0</number>
+            </property>
+            <property name="rightMargin">
+             <number>14</number>
+            </property>
+            <property name="bottomMargin">
+             <number>0</number>
+            </property>
+            <item>
+             <widget class="QPushButton" name="backButton">
+              <property name="text">
+               <string>Back</string>
+              </property>
+              <property name="cursor">
+               <cursorShape>PointingHandCursor</cursorShape>
+              </property>
+              <property name="role" stdset="0">
+               <string>secondary</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="spacer10">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QLabel" name="hintLabel">
+              <property name="text">
+               <string>Press Enter ↵ to jump to the next field</string>
+              </property>
+              <property name="role" stdset="0">
+               <string>hint</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="spacer11">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeType">
+               <enum>QSizePolicy::Fixed</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>8</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="nextButton">
+              <property name="text">
+               <string>Continue</string>
+              </property>
+              <property name="cursor">
+               <cursorShape>PointingHandCursor</cursorShape>
+              </property>
+              <property name="role" stdset="0">
+               <string>primary</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="successPage">
+      <layout class="QVBoxLayout" name="successPageLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QFrame" name="successCard">
+         <property name="role" stdset="0">
+          <string>card</string>
+         </property>
+         <layout class="QVBoxLayout" name="successLayout">
+          <property name="spacing">
+           <number>10</number>
+          </property>
+          <property name="leftMargin">
+           <number>60</number>
+          </property>
+          <property name="topMargin">
+           <number>40</number>
+          </property>
+          <property name="rightMargin">
+           <number>60</number>
+          </property>
+          <property name="bottomMargin">
+           <number>40</number>
+          </property>
+          <item>
+           <spacer name="spacer13">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item alignment="Qt::AlignHCenter">
+           <widget class="QLabel" name="bigCheck">
+            <property name="text">
+             <string>✓</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="role" stdset="0">
+             <string>bigCheck</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>88</width>
+              <height>88</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>88</width>
+              <height>88</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer14">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>8</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QLabel" name="successTitle">
+            <property name="text">
+             <string>You're all set, Ada</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="role" stdset="0">
+             <string>h1</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="successSub">
+            <property name="text">
+             <string>Your workspace is ready. Here is what we set up.</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignCenter</set>
+            </property>
+            <property name="role" stdset="0">
+             <string>sub</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer15">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>16</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item alignment="Qt::AlignHCenter">
+           <widget class="QFrame" name="summary">
+            <property name="maximumSize">
+             <size>
+              <width>460</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="role" stdset="0">
+             <string>summary</string>
+            </property>
+            <layout class="QGridLayout" name="summaryGrid" columnstretch="0,1">
+             <property name="horizontalSpacing">
+              <number>24</number>
+             </property>
+             <property name="verticalSpacing">
+              <number>12</number>
+             </property>
+             <property name="leftMargin">
+              <number>26</number>
+             </property>
+             <property name="topMargin">
+              <number>20</number>
+             </property>
+             <property name="rightMargin">
+              <number>26</number>
+             </property>
+             <property name="bottomMargin">
+              <number>20</number>
+             </property>
+             <item row="0" column="0">
+              <widget class="QLabel" name="sumTag1">
+               <property name="text">
+                <string>NAME</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumTag</string>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLabel" name="sumVal1">
+               <property name="text">
+                <string>Ada Lovelace</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumVal</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="sumTag2">
+               <property name="text">
+                <string>EMAIL</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumTag</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="sumVal2">
+               <property name="text">
+                <string>ada@lovelace.dev</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumVal</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="sumTag3">
+               <property name="text">
+                <string>WORK</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumTag</string>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLabel" name="sumVal3">
+               <property name="text">
+                <string>Mathematician  ·  Analytical Engines Ltd</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumVal</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="sumTag4">
+               <property name="text">
+                <string>USERNAME</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumTag</string>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QLabel" name="sumVal4">
+               <property name="text">
+                <string>@ada_l</string>
+               </property>
+               <property name="role" stdset="0">
+                <string>sumVal</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer16">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeType">
+             <enum>QSizePolicy::Fixed</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>14</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item alignment="Qt::AlignHCenter">
+           <widget class="QPushButton" name="againButton">
+            <property name="text">
+             <string>Start over</string>
+            </property>
+            <property name="cursor">
+             <cursorShape>PointingHandCursor</cursorShape>
+            </property>
+            <property name="role" stdset="0">
+             <string>secondary</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacer17">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>40</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="rightColumn">
+     <property name="minimumSize">
+      <size>
+       <width>360</width>
+       <height>0</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>360</width>
+       <height>16777215</height>
+      </size>
+     </property>
+     <layout class="QVBoxLayout" name="rightLayout" stretch="1,0,0">
+      <property name="spacing">
+       <number>16</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>0</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QFrame" name="coachCard">
+        <property name="role" stdset="0">
+         <string>card</string>
+        </property>
+        <layout class="QVBoxLayout" name="coachLayout">
+         <property name="spacing">
+          <number>8</number>
+         </property>
+         <property name="leftMargin">
+          <number>26</number>
+         </property>
+         <property name="topMargin">
+          <number>24</number>
+         </property>
+         <property name="rightMargin">
+          <number>26</number>
+         </property>
+         <property name="bottomMargin">
+          <number>22</number>
+         </property>
+         <item>
+          <widget class="QLabel" name="coachEyebrow">
+           <property name="text">
+            <string>FIELD GUIDE</string>
+           </property>
+           <property name="role" stdset="0">
+            <string>eyebrow</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="coachTitle">
+           <property name="text">
+            <string>First name</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="role" stdset="0">
+            <string>coachTitle</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="coachText">
+           <property name="text">
+            <string>The name people call you. We use it to greet you inside the app.</string>
+           </property>
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+           <property name="role" stdset="0">
+            <string>coachText</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer18">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Fixed</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>4</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <layout class="QHBoxLayout" name="exampleRow" stretch="0,1">
+           <property name="spacing">
+            <number>10</number>
+           </property>
+           <property name="leftMargin">
+            <number>0</number>
+           </property>
+           <property name="topMargin">
+            <number>0</number>
+           </property>
+           <property name="rightMargin">
+            <number>0</number>
+           </property>
+           <property name="bottomMargin">
+            <number>0</number>
+           </property>
+           <item>
+            <widget class="QLabel" name="exampleTag">
+             <property name="text">
+              <string>EXAMPLE</string>
+             </property>
+             <property name="role" stdset="0">
+              <string>exampleTag</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="example">
+             <property name="text">
+              <string>Ada</string>
+             </property>
+             <property name="role" stdset="0">
+              <string>example</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <spacer name="spacer19">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Fixed</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>14</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QLabel" name="reqHead">
+           <property name="text">
+            <string>REQUIREMENTS</string>
+           </property>
+           <property name="role" stdset="0">
+            <string>reqHead</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="rule1">
+           <property name="text">
+            <string>○   At least 2 letters</string>
+           </property>
+           <property name="role" stdset="0">
+            <string>rule</string>
+           </property>
+           <property name="state" stdset="0">
+            <string>todo</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="rule2">
+           <property name="text">
+            <string>○   Letters, spaces, - and ' only</string>
+           </property>
+           <property name="role" stdset="0">
+            <string>rule</string>
+           </property>
+           <property name="state" stdset="0">
+            <string>todo</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="rule3">
+           <property name="text">
+            <string>○   </string>
+           </property>
+           <property name="role" stdset="0">
+            <string>rule</string>
+           </property>
+           <property name="state" stdset="0">
+            <string>todo</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="rule4">
+           <property name="text">
+            <string>○   </string>
+           </property>
+           <property name="role" stdset="0">
+            <string>rule</string>
+           </property>
+           <property name="state" stdset="0">
+            <string>todo</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="spacer20">
+           <property name="orientation">
+            <enum>Qt::Vertical</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>40</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+         <item>
+          <widget class="QFrame" name="tipFrame">
+           <property name="role" stdset="0">
+            <string>tip</string>
+           </property>
+           <layout class="QHBoxLayout" name="tipLayout">
+            <property name="leftMargin">
+             <number>14</number>
+            </property>
+            <property name="topMargin">
+             <number>11</number>
+            </property>
+            <property name="rightMargin">
+             <number>14</number>
+            </property>
+            <property name="bottomMargin">
+             <number>11</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="tipText">
+              <property name="text">
+               <string>Fields you are not editing fade back, so you always know where you are.</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+              <property name="role" stdset="0">
+               <string>tipText</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="liveLabel">
+        <property name="text">
+         <string>LIVE PREVIEW</string>
+        </property>
+        <property name="role" stdset="0">
+         <string>eyebrowMuted</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="PreviewCard" name="preview" />
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ProgressRing</class>
+   <extends>QFrame</extends>
+   <header>form_widgets.h</header>
+   <container>0</container>
+  </customwidget>
+  <customwidget>
+   <class>StepList</class>
+   <extends>QFrame</extends>
+   <header>form_widgets.h</header>
+   <container>0</container>
+  </customwidget>
+  <customwidget>
+   <class>PreviewCard</class>
+   <extends>QFrame</extends>
+   <header>form_widgets.h</header>
+   <container>0</container>
+  </customwidget>
+ </customwidgets>
+ <resources />
+ <connections />
+</ui>

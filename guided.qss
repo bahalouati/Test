@@ -1,0 +1,359 @@
+/* =============================================================================
+   GUIDED FORM  -  calm, light theme for a multi-step form that coaches the user
+   =============================================================================
+
+   Loaded by loadQss("guided") in guidedform.cpp and applied to the form window only.
+   Edit live without recompiling:   QSS_DIR=/path/to/themes ./Showcase --design form
+
+   WHERE THE LAYOUT LIVES
+   ----------------------
+   The structure of the window (columns, cards, labels, buttons, the success page) is in
+   guidedform.ui, a Qt Designer file. The input fields themselves are created from data in
+   guidedform.cpp. This file only decides how all of it LOOKS.
+
+   WHY  [role="sub"]  AND NOT  #sub ?
+   ----------------------------------
+   Qt Designer insists that every widget has a UNIQUE object name (brandLabel, sideSub,
+   footerLabel ...), but many labels must share one look (all the gray "sub" captions).
+   So in Designer each styled widget carries a dynamic property called  role  (Property
+   Editor -> the "+" button -> String). The selector
+        QLabel[role="sub"]        any QLabel whose property  role  equals "sub"
+   matches all of them, whatever their unique names are. To restyle a widget in Designer,
+   just change its role. The fields built in C++ keep ordinary #names (fieldLabel,
+   inputWrap, ...) because there is only one definition of each.
+
+   For an explanation of QSS syntax itself (selectors, #objectName, pseudo-states,
+   sub-controls, rgba alpha 0-255, gradients) see the crash course at the top of
+   aurora.qss. This file explains what each rule DOES, and how the "guiding" works.
+
+   THE GUIDING IDEA
+   ----------------
+   A long form is scary because every box competes for attention. So:
+     1. ONE field is "active" at a time. It gets a green border and a soft green glow.
+     2. Every OTHER field fades back (opacity 42%). Your eye cannot wander.
+     3. A "field guide" on the right explains the active field and shows a live
+        checklist that ticks itself while you type.
+     4. Errors appear only AFTER you leave a field ("reward early, punish late"),
+        so nobody is told off for a half-typed email.
+     5. A live preview card fills in as you type, so the effort feels rewarded.
+
+   WHICH PART IS QSS AND WHICH IS C++?
+   -----------------------------------
+   * The look of each state (idle / active / valid / error) is done HERE using
+     DYNAMIC PROPERTIES. The C++ code simply sets a property on the widget:
+          wrap->setProperty("state", "error");  repolish(wrap);
+     and the selector  QFrame#inputWrap[state="error"]  below starts to match.
+     (repolish = style()->unpolish(w); style()->polish(w); it tells Qt to
+     re-evaluate the style sheet for that widget.)
+   * Things QSS cannot do are done in C++: the glow (painted in GuidedField::paintEvent),
+     the fade (QGraphicsOpacityEffect), their animations (QPropertyAnimation), and
+     the painted ring, timeline, status icon and preview card (QPainter).
+   ============================================================================= */
+
+
+/* -----------------------------------------------------------------------------
+   0. GLOBAL BASELINE
+   ----------------------------------------------------------------------------- */
+
+/* One font for everything (Inter first, then fallbacks). */
+* {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+}
+
+/* Every plain widget is transparent, so Qt does not paint its default gray boxes on
+   top of our page background. Widgets that need a fill set their own below.
+   Default text is a very dark green-black (#14211d): softer than pure black. */
+QWidget {
+    background: transparent;
+    color: #14211d;
+}
+
+/* The window: a warm off-white with the faintest green tint. */
+QWidget#root { background: #f3f5f1; }
+
+
+/* -----------------------------------------------------------------------------
+   1. CARDS
+   ----------------------------------------------------------------------------- */
+
+/* White panels with a hairline border and big rounded corners. Used for the form,
+   the success page and the field guide. */
+QFrame[role="card"] {
+    background: #ffffff;
+    border: 1px solid #e4e8e2;
+    border-radius: 22px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   2. TYPOGRAPHY
+   ----------------------------------------------------------------------------- */
+
+/* Product name, top-left. */
+QLabel[role="brand"] {
+    font-size: 20px;
+    font-weight: 800;
+}
+
+/* Title in the left column. */
+QLabel[role="sideTitle"] {
+    font-size: 24px;
+    font-weight: 800;
+}
+
+/* Main heading inside a card ("Tell us about you"). */
+QLabel[role="h1"] {
+    font-size: 28px;
+    font-weight: 800;
+}
+
+/* Secondary text: blurbs, captions. */
+QLabel[role="sub"] {
+    color: #6b7a74;
+}
+
+/* Tiny all-caps label above a heading ("STEP 1 OF 3", "FIELD GUIDE"). Accent green.
+   letter-spacing widens the tracking, which is what makes small caps readable. */
+QLabel[role="eyebrow"] {
+    color: #0f9d76;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+/* Same, but gray: used for "LIVE PREVIEW", which sits outside a card. */
+QLabel[role="eyebrowMuted"] {
+    color: #8a9791;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+/* "Profile complete" next to the progress ring. */
+QLabel[role="ringTitle"] {
+    font-size: 15px;
+    font-weight: 800;
+}
+
+/* The small hint beside the Continue button. */
+QLabel[role="hint"] {
+    color: #8a9791;
+    font-size: 12px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   3. THE FIELD  (label + input box + message)
+   ----------------------------------------------------------------------------- */
+
+/* The label above each input. */
+QLabel#fieldLabel {
+    font-size: 13px;
+    font-weight: 700;
+}
+
+/* The rounded box that LOOKS like the input. It is a QFrame that contains the real
+   QLineEdit (borderless, see below) plus the Show/Hide button and the status icon.
+   We style a frame instead of the QLineEdit directly because we want ONE border
+   around text + icon together, and because the glow effect is attached to this frame.
+
+   The border is ALWAYS 2px wide. Only its COLOR changes between states, so the field
+   never changes size or shifts the layout when you click it. */
+QFrame#inputWrap {
+    background: #ffffff;
+    border: 2px solid #e1e5e0;
+    border-radius: 14px;
+}
+
+/* ---- the four states. C++ sets the dynamic property  state  to one of these ---- */
+
+/* idle: nothing typed yet, not focused. (The default rule above is already the idle look;
+   this line is explicit so the four states can be read side by side.) */
+QFrame#inputWrap[state="idle"] {
+    border-color: #e1e5e0;
+}
+
+/* active: the cursor is here. Strong green border. The glow around it is painted
+   by C++ (GuidedField::paintEvent) and animated from invisible to full strength. */
+QFrame#inputWrap[state="active"] {
+    border-color: #0f9d76;
+}
+
+/* valid: you left the field and it passed every rule. A calm, soft green. */
+QFrame#inputWrap[state="valid"] {
+    border-color: #b9e3d3;
+}
+
+/* error: you left the field and a rule failed. Red border and a faint red wash.
+   While you are typing in an error field the glow turns red too. */
+QFrame#inputWrap[state="error"] {
+    border-color: #e0475b;
+    background: #fff8f9;
+}
+
+/* The actual text input. It sits INSIDE inputWrap, so it must be invisible itself:
+   no border, no background. Bigger text (15px) because this is what people read most.
+   selection-background-color is the highlight when you select text. */
+QLineEdit#fieldEdit {
+    background: transparent;
+    border: none;
+    font-size: 15px;
+    selection-background-color: #0f9d76;
+    selection-color: #ffffff;
+}
+
+/* "Show / Hide" text button inside password fields. */
+QPushButton#showBtn {
+    background: transparent;
+    border: none;
+    color: #0f9d76;
+    font-weight: 700;
+    padding: 4px 6px;
+}
+QPushButton#showBtn:hover { color: #0b7d5d; }
+
+/* The message line under the field. Its text and color come from the dynamic property
+   "kind":  ok = green "Looks good",  error = the first failed rule,  none = empty. */
+QLabel#fieldMsg {
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7a74;
+}
+QLabel#fieldMsg[kind="ok"]    { color: #0f9d76; }
+QLabel#fieldMsg[kind="error"] { color: #e0475b; }
+
+
+/* -----------------------------------------------------------------------------
+   4. BUTTONS
+   ----------------------------------------------------------------------------- */
+
+/* Primary action ("Continue" / "Create account"): green gradient, white bold text. */
+QPushButton[role="primary"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0f9d76, stop:1 #14b88a);
+    color: #ffffff;
+    border: none;
+    border-radius: 14px;
+    padding: 13px 28px;
+    font-size: 14px;
+    font-weight: 800;
+}
+QPushButton[role="primary"]:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #12ae85, stop:1 #1ccb9a);
+}
+
+/* THE KEY GUIDING DETAIL: while the step is incomplete, Qt disables the button
+   (m_next->setEnabled(false)) and this rule greys it out. The user sees at a glance
+   that something is still missing, and the button lights up the moment it is all valid. */
+QPushButton[role="primary"]:disabled {
+    background: #e6eae5;
+    color: #a1ada7;
+}
+
+/* Secondary action ("Back", "Start over"): outline only, so it never competes. */
+QPushButton[role="secondary"] {
+    background: #ffffff;
+    color: #14211d;
+    border: 1px solid #dde2dc;
+    border-radius: 14px;
+    padding: 12px 22px;
+    font-weight: 700;
+}
+QPushButton[role="secondary"]:hover    { border-color: #0f9d76; color: #0b7d5d; }
+QPushButton[role="secondary"]:disabled { color: #b4beb9; border-color: #eceee9; }
+
+
+/* -----------------------------------------------------------------------------
+   5. FIELD GUIDE  (right-hand coach panel)
+   ----------------------------------------------------------------------------- */
+
+/* Name of the active field. */
+QLabel[role="coachTitle"] {
+    font-size: 20px;
+    font-weight: 800;
+}
+
+/* Explanation of why we ask and what to type. Slightly softer than body text. */
+QLabel[role="coachText"] {
+    color: #44534d;
+    font-size: 13px;
+}
+
+/* "EXAMPLE" pill: pale green tag with green text. */
+QLabel[role="exampleTag"] {
+    background: #e6f5ee;
+    color: #0b7d5d;
+    border-radius: 8px;
+    padding: 3px 9px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+
+/* The example value itself, in a monospace font so it reads as "something to type". */
+QLabel[role="example"] {
+    font-family: "DejaVu Sans Mono", monospace;
+    font-size: 13px;
+    color: #14211d;
+}
+
+/* "REQUIREMENTS" heading above the checklist. */
+QLabel[role="reqHead"] {
+    color: #8a9791;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 2px;
+}
+
+/* One line of the live checklist. C++ sets the dynamic property "state":
+       todo = not met yet, nothing typed or still typing  -> gray
+       ok   = rule satisfied                              -> green and bold
+       bad  = rule failed AND the field is showing an error -> red
+   The leading symbol (open circle / check / cross) is part of the text. */
+QLabel[role="rule"] { font-size: 13px; }
+QLabel[role="rule"][state="todo"] { color: #6b7a74; }
+QLabel[role="rule"][state="ok"]   { color: #0f9d76; font-weight: 700; }
+QLabel[role="rule"][state="bad"]  { color: #e0475b; font-weight: 700; }
+
+/* Tip box at the bottom of the guide: very pale green with rounded corners. */
+QFrame[role="tip"] {
+    background: #eef7f3;
+    border: none;
+    border-radius: 14px;
+}
+QLabel[role="tipText"] {
+    color: #3f6657;
+    font-size: 12px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   6. SUCCESS PAGE
+   ----------------------------------------------------------------------------- */
+
+/* Big green circle with a check mark. The label is 88x88 px (set in C++) and a radius of
+   exactly half of that (44px) makes it a perfect circle. */
+QLabel[role="bigCheck"] {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #0f9d76, stop:1 #14b88a);
+    color: #ffffff;
+    border-radius: 44px;
+    font-size: 42px;
+    font-weight: 800;
+}
+
+/* The summary box: pale gray-green panel with label/value rows. */
+QFrame[role="summary"] {
+    background: #f6f8f5;
+    border: 1px solid #e4e8e2;
+    border-radius: 16px;
+}
+QLabel[role="sumTag"] {
+    color: #8a9791;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 1px;
+}
+QLabel[role="sumVal"] {
+    font-size: 14px;
+    font-weight: 700;
+}

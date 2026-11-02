@@ -1,0 +1,12 @@
+<!-- Files listed here are compiled INTO the executable (qmake runs rcc on this file),
+     so the app needs no loose files at runtime. They are addressed with the ":/" prefix,
+     e.g. ":/themes/aurora.qss". Add a new theme by dropping a .qss next to these and
+     adding one <file> line. -->
+<RCC>
+    <qresource prefix="/">
+        <file>themes/aurora.qss</file>
+        <file>themes/vault.qss</file>
+        <file>themes/control.qss</file>
+        <file>themes/guided.qss</file>
+    </qresource>
+</RCC>

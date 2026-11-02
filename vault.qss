@@ -1,0 +1,309 @@
+/* =============================================================================
+   VAULT  -  light fintech / banking theme
+   =============================================================================
+
+   Loaded by loadQss("vault") in designs.cpp and applied to the Vault window only.
+   Edit live without recompiling:  QSS_DIR=/path/to/themes ./Showcase --design vault
+
+   If QSS syntax (selectors, #objectName, :pseudo-states, ::sub-controls,
+   rgba alpha 0-255, qlineargradient coordinates) is new to you, the crash course
+   at the top of aurora.qss explains each of them. This file explains what every
+   rule DOES; the ideas behind it are the same.
+
+   DESIGN IDEAS USED HERE
+   ----------------------
+   * Light, airy look: page = very pale lavender (#f4f5fb), cards = pure white.
+   * ONE accent color (indigo #4a43e0 / #5b52f0) for everything interactive, so
+     users learn quickly what is clickable.
+   * Soft depth comes from big radii (22px) plus a gentle drop shadow. The shadow
+     is NOT in this file because QSS has no box-shadow: it is a
+     QGraphicsDropShadowEffect added in C++ (softShadow() in designs.cpp).
+   * Semantic colors: green = good / completed, amber = pending, rose = bad.
+   ============================================================================= */
+
+
+/* -----------------------------------------------------------------------------
+   0. GLOBAL BASELINE
+   ----------------------------------------------------------------------------- */
+
+/* Font for every widget (Inter first, then fallbacks). */
+* {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+}
+
+/* Make every plain QWidget transparent so layout containers do not paint Qt's
+   default gray rectangles on top of our pale page background. Widgets that need a
+   fill (cards, buttons, inputs) set their own below. Default text = near-black navy
+   (#151a2e), which is softer than pure black and has excellent contrast on white. */
+QWidget {
+    background: transparent;
+    color: #151a2e;
+}
+
+/* The window background: a single flat pale lavender. */
+QWidget#root { background: #f4f5fb; }
+
+
+/* -----------------------------------------------------------------------------
+   1. SIDEBAR
+   ----------------------------------------------------------------------------- */
+
+/* White column on the left separated from the page by a 1px hairline. */
+QFrame#side {
+    background: #ffffff;
+    border-right: 1px solid #e8eaf3;
+}
+
+/* "Vault" wordmark at the top of the sidebar. */
+QLabel#brand {
+    font-size: 20px;
+    font-weight: 800;
+    color: #151a2e;
+}
+
+/* Navigation items: flat, left-aligned text buttons.
+   text-align:left is needed because QPushButton centers text by default. */
+QPushButton#nav {
+    text-align: left;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 14px;
+    color: #6f7690;
+    font-weight: 600;
+}
+/* Hover: very light tint + darker text. */
+QPushButton#nav:hover {
+    background: #f1f2fa;
+    color: #151a2e;
+}
+/* Current page (checkable button in an exclusive group): soft indigo pill. */
+QPushButton#nav:checked {
+    background: #ecebff;
+    color: #4a43e0;
+}
+
+/* "Vault Plus" promo card at the bottom of the sidebar: deep-indigo gradient. */
+QFrame#upgrade {
+    border-radius: 18px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #231f6b, stop:1 #5b52f0);
+}
+/* Descendant selector ("QFrame#upgrade QLabel" = any label INSIDE the promo card):
+   force white text, otherwise it would inherit the dark default and be unreadable
+   on the dark gradient. */
+QFrame#upgrade QLabel { color: white; }
+
+/* White button inside the promo card. Its own objectName ("light") keeps it from
+   picking up any other button style. */
+QPushButton#light {
+    background: white;
+    color: #3a33c9;
+    border: none;
+    border-radius: 10px;
+    padding: 9px;
+    font-weight: 700;
+}
+
+
+/* -----------------------------------------------------------------------------
+   2. TYPOGRAPHY
+   ----------------------------------------------------------------------------- */
+
+QLabel#h1  { font-size: 26px; font-weight: 800; }   /* page title              */
+QLabel#h2  { font-size: 15px; font-weight: 700; }   /* card title              */
+QLabel#sub { color: #7b829c; }                      /* secondary / helper text */
+QLabel#big { font-size: 34px; font-weight: 800; }   /* the balance number      */
+QLabel#muted { color: #7b829c; font-weight: 600; }  /* small captions, links   */
+
+
+/* -----------------------------------------------------------------------------
+   3. CARDS
+   ----------------------------------------------------------------------------- */
+
+/* White panel with a hairline border and generous 22px corners.
+   (The soft shadow beneath it is added in C++.) */
+QFrame#card {
+    background: white;
+    border: 1px solid #eceef6;
+    border-radius: 22px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   4. CHIPS AND AVATAR
+   ----------------------------------------------------------------------------- */
+
+/* Status chips: tinted pastel background + saturated text of the same hue.
+     up   = green  (+2.4%, "Completed")
+     down = rose   (negative values)
+     pend = amber  ("Pending")                                                   */
+QLabel#up {
+    background: #def7ec;
+    color: #0e9f6e;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+QLabel#down {
+    background: #fde8ec;
+    color: #e11d48;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+QLabel#pend {
+    background: #fef3c7;
+    color: #b45309;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+
+/* Round avatar: the label is 38x38 px (fixed in C++) and a radius of exactly half
+   of that (19px) turns the square into a circle. Warm amber->rose gradient. */
+QLabel#avatar {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #f59e0b, stop:1 #f43f5e);
+    color: white;
+    border-radius: 19px;
+    font-weight: 800;
+}
+
+
+/* -----------------------------------------------------------------------------
+   5. SEARCH FIELD AND NOTIFICATION BUTTON
+   ----------------------------------------------------------------------------- */
+
+/* White rounded input with a light border. */
+QLineEdit#search {
+    background: white;
+    border: 1px solid #e4e7f2;
+    border-radius: 14px;
+    padding: 10px 15px;
+    selection-background-color: #5b52f0;
+}
+/* Focus ring: border turns accent-colored while the user types. */
+QLineEdit#search:focus { border: 1px solid #5b52f0; }
+
+/* The square bell/mail button. Fixed 42x40 via min/max so layouts cannot stretch it. */
+QPushButton#bell {
+    background: white;
+    border: 1px solid #e4e7f2;
+    border-radius: 14px;
+    min-width: 42px;  max-width: 42px;
+    min-height: 40px; max-height: 40px;
+    font-size: 16px;
+}
+QPushButton#bell:hover { border-color: #5b52f0; }
+
+
+/* -----------------------------------------------------------------------------
+   6. SEGMENTED CONTROL  (Week | Month | Year)
+   ----------------------------------------------------------------------------- */
+
+/* Pale track with no border... */
+QFrame#seg {
+    background: #f1f2fa;
+    border-radius: 13px;
+}
+/* ...inactive segments are just muted text... */
+QPushButton#segBtn {
+    border: none;
+    border-radius: 10px;
+    padding: 7px 15px;
+    color: #7b829c;
+    font-weight: 700;
+}
+/* ...and the selected one becomes a white "raised" tab with accent-colored text. */
+QPushButton#segBtn:checked {
+    background: white;
+    color: #4a43e0;
+}
+
+
+/* -----------------------------------------------------------------------------
+   7. ACTION BUTTONS  (Send / Request / Top up)
+   ----------------------------------------------------------------------------- */
+
+/* Secondary action: pale indigo tint, indigo text. */
+QPushButton#action {
+    background: #f4f5fd;
+    border: none;
+    border-radius: 16px;
+    padding: 14px 10px;
+    font-weight: 700;
+    color: #3a33c9;
+}
+QPushButton#action:hover { background: #e9e8ff; }
+
+/* Primary action ("Send"): horizontal indigo->violet gradient, white bold text.
+   Only ONE primary button per card, so the eye knows where to go first. */
+QPushButton#primary {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #4a43e0, stop:1 #7c6cff);
+    border: none;
+    border-radius: 16px;
+    padding: 14px 10px;
+    font-weight: 800;
+    color: white;
+}
+/* Hover: same gradient, a little lighter. */
+QPushButton#primary:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #5b54f0, stop:1 #8d7fff);
+}
+
+
+/* -----------------------------------------------------------------------------
+   8. PROGRESS BARS  (spending categories)
+   ----------------------------------------------------------------------------- */
+
+/* The groove (empty part). Qt's default progress bar is tall and shows text, so we
+   pin it to exactly 8px, no border, fully rounded (radius 4px = half the height).
+   Each bar's FILL color differs per category, so it is set from C++ with an
+   inline style sheet on that one bar:  QProgressBar::chunk { background: <color>; }
+   Only the rounded corners are shared and live here. */
+QProgressBar {
+    background: #eef0f8;
+    border: none;
+    border-radius: 4px;
+    max-height: 8px;
+    min-height: 8px;
+    text-align: center;
+}
+/* ::chunk = the filled part. Same radius so its ends are round too. */
+QProgressBar::chunk { border-radius: 4px; }
+
+
+/* -----------------------------------------------------------------------------
+   9. TABLE  (Recent transactions)
+   ----------------------------------------------------------------------------- */
+
+/* Transparent so the white card shows through; outline:0 hides the dotted focus box. */
+QTableWidget {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+/* Row separators: a hairline under every cell + left padding for breathing room. */
+QTableWidget::item {
+    padding-left: 8px;
+    border-bottom: 1px solid #f0f1f8;
+}
+/* Header cells: tiny, muted, no fill, underlined. */
+QHeaderView::section {
+    background: transparent;
+    color: #9aa0b8;
+    border: none;
+    border-bottom: 1px solid #eceef6;
+    padding: 6px 8px;
+    font-weight: 700;
+    font-size: 11px;
+}
+/* Hide the top-left corner square. */
+QTableCornerButton::section {
+    background: transparent;
+    border: none;
+}
+/* Wrapper widget around the status chips placed inside table cells. */
+QWidget#cell { background: transparent; }

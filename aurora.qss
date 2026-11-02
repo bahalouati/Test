@@ -1,0 +1,327 @@
+/* =============================================================================
+   AURORA  -  dark analytics dashboard theme
+   =============================================================================
+
+   HOW THIS FILE IS USED
+   ---------------------
+   * It is compiled into the executable through resources.qrc and loaded by
+     loadQss("aurora") in designs.cpp, then applied with widget->setStyleSheet().
+     The style sheet is applied to the TOP-LEVEL window only, so it never leaks into
+     other windows (each design has its own .qss).
+   * While developing you can edit this file and see changes WITHOUT recompiling:
+         QSS_DIR=/path/to/themes ./Showcase --design aurora
+     (loadQss() prefers a file from $QSS_DIR over the compiled-in copy.)
+
+   QSS CRASH COURSE (read this once, the rest of the file builds on it)
+   --------------------------------------------------------------------
+   QSS looks like CSS but it is NOT CSS. The parts we rely on:
+
+   1. SELECTORS - which widgets a rule applies to
+        QPushButton            every QPushButton (and subclasses)
+        QFrame#card            a QFrame whose objectName is "card"
+                               (the C++ side does frame->setObjectName("card"))
+        #card                  any widget named "card"
+        QLabel#up, QLabel#down both selectors share one rule (comma = "or")
+        QFrame#seg QLabel      a QLabel anywhere INSIDE a QFrame named "seg"
+        *                      every widget
+
+   2. PSEUDO-STATES - when the rule is active
+        :hover  (mouse over)   :checked (checkable button is on)
+        :focus  (has keyboard focus)   :disabled   :pressed
+
+   3. SUB-CONTROLS - styleable parts inside a widget
+        QTableWidget::item        a cell        QHeaderView::section   a header cell
+        QProgressBar::chunk       the filled bar
+
+   4. CASCADE / SPECIFICITY - if two rules set the same property, the more
+      specific selector wins (#id beats a plain type, which beats *). On a tie
+      the rule written LATER in the file wins. That is why the generic
+      "QWidget { background: transparent }" rule is placed near the top and the
+      specific rules come after it.
+
+   5. COLORS
+        #rrggbb                    opaque hex color
+        rgba(255,255,255,13)       red, green, blue, ALPHA - in Qt the alpha goes
+                                   from 0 (invisible) to 255 (opaque), NOT 0..1
+        qlineargradient(x1:0,y1:0, x2:1,y2:1, stop:0 A, stop:1 B)
+                                   gradient from (x1,y1) to (x2,y2) where 0..1 is
+                                   a fraction of the widget size (0,0 = top-left,
+                                   1,1 = bottom-right), stop:0 is the start color.
+
+   6. WHAT QSS CANNOT DO (so you will see C++ code for these instead)
+        - box-shadow           -> QGraphicsDropShadowEffect
+        - animations           -> QPropertyAnimation (see ToggleSwitch)
+        - charts / gauges      -> custom QPainter widgets in widgets.cpp
+   ============================================================================= */
+
+
+/* -----------------------------------------------------------------------------
+   0. GLOBAL BASELINE
+   ----------------------------------------------------------------------------- */
+
+/* "*" matches every widget. We set the font once here so every label, button and
+   table inherits it. "Inter" is tried first, then DejaVu Sans, then whatever
+   sans-serif font the OS has. 13px is the default body size; headings override. */
+* {
+    font-family: "Inter", "DejaVu Sans", sans-serif;
+    font-size: 13px;
+}
+
+/* IMPORTANT BASELINE RULE.
+   By default Qt paints an opaque palette-colored background behind every widget
+   (a light gray with the Fusion style). On a dark design that would show up as
+   ugly gray boxes behind every label and layout container. Making all QWidgets
+   transparent lets the window gradient shine through; widgets that WANT a
+   background (cards, buttons, inputs) set their own further down, which wins
+   because those selectors are more specific / later in the file.
+   "color" is the default text color: a soft near-white that is easier on the eyes
+   than pure #ffffff on a dark background. */
+QWidget {
+    background: transparent;
+    color: #e8ecf8;
+}
+
+/* The window itself (objectName "root" is set in makeWindow()).
+   A diagonal gradient from very dark navy (top-left) to deep violet (bottom-right)
+   is what gives the whole app its "aurora" atmosphere. */
+QWidget#root {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 #090d19, stop:0.6 #0d1224, stop:1 #140f2b);
+}
+
+
+/* -----------------------------------------------------------------------------
+   1. FLOATING ICON RAIL (left navigation)
+   ----------------------------------------------------------------------------- */
+
+/* The rounded vertical pill that holds the logo and nav icons.
+   Background is white at alpha 8/255 (~3%): a barely-there "glass" tint.
+   The 1px border at alpha 16 gives the glass edge. radius 24px = pill ends. */
+QFrame#rail {
+    background: rgba(255, 255, 255, 8);
+    border: 1px solid rgba(255, 255, 255, 16);
+    border-radius: 24px;
+}
+
+/* The "A" logo tile at the top: violet-to-cyan diagonal gradient.
+   (Its size, 48x48, is fixed in C++; border-radius 15px rounds the corners.) */
+QLabel#logo {
+    border-radius: 15px;
+    font-size: 20px;
+    font-weight: 800;
+    color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #8b5cf6, stop:1 #22d3ee);
+}
+
+/* Navigation icon buttons. They are flat (border: none) squares with rounded
+   corners. min/max width+height pin them to exactly 48x48 so they do not stretch.
+   Muted gray-blue color = inactive. */
+QPushButton#railBtn {
+    border: none;
+    border-radius: 15px;
+    font-size: 19px;
+    color: #7d88a8;
+    min-width: 48px;  max-width: 48px;
+    min-height: 48px; max-height: 48px;
+}
+
+/* Hover feedback: a faint white wash and brighter icon. */
+QPushButton#railBtn:hover {
+    background: rgba(255, 255, 255, 14);
+    color: white;
+}
+
+/* The selected page. The buttons are checkable and live in an exclusive
+   QButtonGroup, so exactly one is :checked. We paint it with a violet->cyan
+   gradient (alpha 200 / 170 keeps it slightly translucent, so it feels part of
+   the glass instead of a flat sticker). */
+QPushButton#railBtn:checked {
+    color: white;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                                stop:0 rgba(139, 92, 246, 200),
+                                stop:1 rgba(34, 211, 238, 170));
+}
+
+
+/* -----------------------------------------------------------------------------
+   2. CARDS (the glass panels everything sits on)
+   ----------------------------------------------------------------------------- */
+
+/* Two selectors, one rule: both the big content cards ("card") and the small KPI
+   tiles ("kpi") share the same glass look.
+   The vertical gradient goes from white alpha 13 (top) to alpha 5 (bottom), which
+   imitates light hitting the top edge of a glass panel.
+   The 1px translucent border + 22px radius complete the effect. */
+QFrame#card, QFrame#kpi {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                stop:0 rgba(255, 255, 255, 13),
+                                stop:1 rgba(255, 255, 255, 5));
+    border: 1px solid rgba(255, 255, 255, 18);
+    border-radius: 22px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   3. TYPOGRAPHY  (all done with QLabel + objectName)
+   ----------------------------------------------------------------------------- */
+
+/* Page title ("Good evening, Ada"). 800 = extra bold. */
+QLabel#h1 { font-size: 27px; font-weight: 800; }
+
+/* Card title ("Revenue overview", "Top customers"). */
+QLabel#h2 { font-size: 15px; font-weight: 700; }
+
+/* Secondary text: subtitles, captions, "View all". Muted blue-gray. */
+QLabel#sub { color: #8892b0; }
+
+/* KPI tile: small caption on top, big number below. */
+QLabel#kpiTitle { color: #8892b0; font-weight: 600; }
+QLabel#kpiValue { font-size: 27px; font-weight: 800; }
+
+/* Legend text next to the colored dots, and the percentage on the right. */
+QLabel#legend { color: #c5cbe0; }
+QLabel#pct    { color: #8892b0; font-weight: 700; }
+
+/* Automation row name ("Weekly digest"). */
+QLabel#autoName { font-weight: 700; }
+
+
+/* -----------------------------------------------------------------------------
+   4. CHIPS  (small colored status pills made from QLabel)
+   ----------------------------------------------------------------------------- */
+
+/* A chip = a label with a tinted translucent background, matching bright text and
+   rounded ends. The same recipe is repeated with three semantic colors:
+       up   = green  (positive change / "Active")
+       down = red    (negative change)
+       warn = amber  (attention / "Trial")
+   Using the SAME hue for background (alpha 36) and text keeps the contrast high
+   without needing separate border colors. */
+QLabel#up {
+    background: rgba(52, 211, 153, 36);
+    color: #34d399;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+QLabel#down {
+    background: rgba(248, 113, 113, 36);
+    color: #f87171;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+QLabel#warn {
+    background: rgba(251, 191, 36, 34);
+    color: #fbbf24;
+    border-radius: 9px;
+    padding: 3px 9px;
+    font-weight: 700;
+    font-size: 11px;
+}
+
+
+/* -----------------------------------------------------------------------------
+   5. SEGMENTED CONTROL  (the "7D | 30D | 90D | 1Y" switcher)
+   ----------------------------------------------------------------------------- */
+
+/* The outer track: a QFrame that contains several checkable QPushButtons. */
+QFrame#seg {
+    background: rgba(255, 255, 255, 9);
+    border: 1px solid rgba(255, 255, 255, 14);
+    border-radius: 14px;
+}
+
+/* Each segment: transparent and flat when not selected... */
+QPushButton#segBtn {
+    border: none;
+    border-radius: 10px;
+    padding: 7px 15px;
+    color: #8892b0;
+    font-weight: 700;
+}
+QPushButton#segBtn:hover { color: white; }
+
+/* ...and a violet "thumb" highlight when selected (:checked). */
+QPushButton#segBtn:checked {
+    background: rgba(139, 92, 246, 95);
+    color: white;
+}
+
+
+/* -----------------------------------------------------------------------------
+   6. INPUT + CALL-TO-ACTION BUTTON
+   ----------------------------------------------------------------------------- */
+
+/* Search box: glass background, rounded, with a violet text-selection color. */
+QLineEdit#search {
+    background: rgba(255, 255, 255, 9);
+    border: 1px solid rgba(255, 255, 255, 16);
+    border-radius: 14px;
+    padding: 9px 14px;
+    selection-background-color: #8b5cf6;
+}
+
+/* :focus is active while the user is typing. We only change the border color, which
+   is the least distracting way to show focus. */
+QLineEdit#search:focus { border: 1px solid #8b5cf6; }
+
+/* The "Export report" primary button: horizontal violet->cyan gradient
+   (x1:0 -> x2:1, y stays 0), flat, bold white text. */
+QPushButton#cta {
+    border: none;
+    border-radius: 14px;
+    padding: 10px 20px;
+    color: white;
+    font-weight: 800;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #8b5cf6, stop:1 #22d3ee);
+}
+
+/* On hover the same gradient is simply lightened a little. */
+QPushButton#cta:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #a284ff, stop:1 #5be4f7);
+}
+
+
+/* -----------------------------------------------------------------------------
+   7. TABLE  (the "Top customers" list)
+   ----------------------------------------------------------------------------- */
+
+/* Transparent table: the card behind it provides the background.
+   "outline: 0" removes the dotted focus rectangle Qt draws around cells. */
+QTableWidget {
+    background: transparent;
+    border: none;
+    outline: 0;
+}
+
+/* Every cell gets left padding and a hairline divider at the bottom, which is what
+   gives the "rows" look even though the grid lines are turned off in C++. */
+QTableWidget::item {
+    padding-left: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 10);
+}
+
+/* Column headers: small, uppercase-looking, muted, with a stronger line beneath. */
+QHeaderView::section {
+    background: transparent;
+    color: #7d88a8;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 18);
+    padding: 6px 8px;
+    font-weight: 700;
+    font-size: 11px;
+}
+
+/* The tiny square where row and column headers meet: keep it invisible. */
+QTableCornerButton::section {
+    background: transparent;
+    border: none;
+}
+
+/* Widgets we insert INTO table cells (the status chips) are wrapped in a QWidget
+   named "cell". The global rule above already makes it transparent; this explicit
+   rule documents the intent and protects against a future palette change. */
+QWidget#cell { background: transparent; }
