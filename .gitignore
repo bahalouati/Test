@@ -9,3 +9,6 @@ __pycache__/
 
 # Qt client build output -- build/, build5/, build-qt6/, anything build*
 qt-jira-client/build*/
+
+# Copilot agent build output
+copilot-agent/build*/

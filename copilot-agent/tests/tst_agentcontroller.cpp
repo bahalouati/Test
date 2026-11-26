@@ -1,0 +1,205 @@
+#include "agentcontroller.h"
+
+#include <QFile>
+#include <QSignalSpy>
+#include <QTemporaryDir>
+#include <QtTest>
+
+using Decision = AgentController::Decision;
+using State = AgentController::State;
+
+class TestAgentController : public QObject
+{
+    Q_OBJECT
+
+    QTemporaryDir m_dir;
+    QStringList m_asked;   // labels of actions the approver saw
+
+    AgentController *make(Decision answer, bool autoLoop = true)
+    {
+        auto *c = new AgentController(this);
+        c->workspace().setRoot(m_dir.path());
+        AgentController::Options o;
+        o.autoLoop = autoLoop;
+        o.maxSteps = 5;
+        o.commandTimeoutSec = 10;
+        c->setOptions(o);
+        m_asked.clear();
+        c->setApprover([this, answer](AgentAction &a, QString *note) {
+            m_asked << a.path + a.command;
+            if (answer == Decision::Reject)
+                *note = "not like that";
+            return answer;
+        });
+        return c;
+    }
+
+    static bool waitFor(AgentController *c, State s, int ms = 10000)
+    {
+        return QTest::qWaitFor([&] { return c->state() == s; }, ms);
+    }
+
+private slots:
+    void init()
+    {
+        QDir(m_dir.path()).removeRecursively();
+        QDir().mkpath(m_dir.path());
+    }
+
+    void startTaskSendsInstructions()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("add a readme");
+        QCOMPARE(sent.size(), 1);
+        QVERIFY(sent[0][0].toString().contains("add a readme"));
+        QCOMPARE(c->state(), State::WaitingForCopilot);
+    }
+
+    void readsRunWithoutAskingAndLoopBack()
+    {
+        QFile f(m_dir.path() + "/hello.txt");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("hi there");
+        f.close();
+
+        AgentController *c = make(Decision::Reject);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"read_file","path":"hello.txt"})", R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());
+        QCOMPARE(sent.size(), 2);
+        const QString results = sent[1][0].toString();
+        QVERIFY2(results.contains("hi there"), qPrintable(results));
+        QVERIFY(results.contains("hello.txt  (8 bytes)"));
+        QCOMPARE(c->step(), 1);
+    }
+
+    void writeNeedsApproval()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->startTask("t");
+        c->onReply({R"({"action":"write_file","path":"src/a.txt","content":"new"})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(m_asked, QStringList{"src/a.txt"});
+        QVERIFY(QFile::exists(m_dir.path() + "/src/a.txt"));
+    }
+
+    void rejectionSkipsTheRestAndTellsCopilot()
+    {
+        AgentController *c = make(Decision::Reject);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"write_file","path":"a.txt","content":"x"})",
+                    R"({"action":"run_command","command":"echo hi"})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(m_asked.size(), 1);   // the command was never offered
+        QVERIFY(!QFile::exists(m_dir.path() + "/a.txt"));
+        const QString results = sent.last()[0].toString();
+        QVERIFY(results.contains("rejected by the user: not like that"));
+        QVERIFY(results.contains("skipped"));
+    }
+
+    void stopEndsEverything()
+    {
+        AgentController *c = make(Decision::Stop);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"run_command","command":"echo hi"})"});
+        QVERIFY(waitFor(c, State::Idle));
+        QTest::qWait(50);
+        QCOMPARE(sent.size(), 1);
+        QVERIFY(!c->taskActive());
+    }
+
+    void commandOutputComesBack()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+#ifdef Q_OS_WIN
+        c->onReply({R"({"action":"run_command","command":"echo agent-ok && exit /b 3"})"});
+#else
+        c->onReply({R"({"action":"run_command","command":"echo agent-ok; exit 3"})"});
+#endif
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        const QString results = sent.last()[0].toString();
+        QVERIFY2(results.contains("agent-ok"), qPrintable(results));
+        QVERIFY(results.contains("exit code 3"));
+    }
+
+    void commandTimeoutIsReported()
+    {
+#ifndef Q_OS_WIN
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"run_command","command":"sleep 30","timeout":1})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot, 8000));
+        QVERIFY(sent.last()[0].toString().contains("timeout"));
+#endif
+    }
+
+    void manualModeHoldsResults()
+    {
+        AgentController *c = make(Decision::Approve, /*autoLoop*/ false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QCOMPARE(sent.size(), 1);
+        c->sendPendingResults();
+        QCOMPARE(sent.size(), 2);
+        QCOMPARE(c->state(), State::WaitingForCopilot);
+    }
+
+    void doneFinishes()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy finished(c, &AgentController::taskFinished);
+        c->startTask("t");
+        c->onReply({R"({"action":"done","summary":"shipped"})"});
+        QVERIFY(QTest::qWaitFor([&] { return finished.size() == 1; }, 5000));
+        QCOMPARE(finished[0][0].toString(), QStringLiteral("shipped"));
+        QCOMPARE(c->state(), State::Idle);
+        QVERIFY(!c->taskActive());
+    }
+
+    void doneAfterAFailureIsNotDone()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy finished(c, &AgentController::taskFinished);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"read_file","path":"missing.txt"})", R"({"action":"done"})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(finished.size(), 0);
+        QVERIFY(sent.last()[0].toString().contains("file not found"));
+    }
+
+    void plainReplyWaitsForUser()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->startTask("t");
+        c->onReply({"int x = 1;"});
+        QCOMPARE(c->state(), State::Idle);
+        QVERIFY(c->taskActive());
+    }
+
+    void stepLimitStopsTheLoop()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        for (int i = 0; i < 5; ++i) {
+            c->onReply({R"({"action":"list_dir"})"});
+            QVERIFY(QTest::qWaitFor([&] { return c->state() != State::RunningActions; }, 5000));
+        }
+        QCOMPARE(c->state(), State::ResultsReady);
+        QCOMPARE(sent.size(), 5);   // task + 4 automatic result messages
+    }
+};
+
+QTEST_GUILESS_MAIN(TestAgentController)
+#include "tst_agentcontroller.moc"

@@ -1,0 +1,289 @@
+#include "agentprotocol.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonParseError>
+#include <QRegularExpression>
+
+namespace AgentProtocol {
+
+QString taskPrompt(const QString &task, const QString &workspaceName,
+                   const QString &platform, const QString &shell)
+{
+    // Examples are inline code, not fenced blocks: the bridge only reads
+    // fenced blocks, so our own message can never be mistaken for a reply.
+    return QStringLiteral(
+        "You are working as a coding agent. I run a desktop app that is connected to this chat. "
+        "It can read and change files in a project folder on my computer and run commands there, "
+        "and it pastes the results back to you. You cannot see the files yourself, so ask for them.\n"
+        "\n"
+        "HOW TO ACT\n"
+        "Put each action in its own fenced code block whose language is agent, containing exactly one "
+        "JSON object. The app runs every agent block in your reply, in order, then sends you the results. "
+        "Writes and commands are shown to me for approval first; I may reject them and tell you why.\n"
+        "\n"
+        "ACTIONS\n"
+        "- `{\"action\":\"list_dir\",\"path\":\".\",\"depth\":2}`\n"
+        "- `{\"action\":\"read_file\",\"path\":\"src/main.cpp\"}` (optional \"start_line\", \"end_line\")\n"
+        "- `{\"action\":\"write_file\",\"path\":\"src/util.h\",\"content\":\"...entire new file...\"}`\n"
+        "- `{\"action\":\"replace_in_file\",\"path\":\"src/main.cpp\",\"old\":\"exact existing text\",\"new\":\"replacement\"}`\n"
+        "- `{\"action\":\"run_command\",\"command\":\"cmake --build build\",\"cwd\":\".\",\"timeout\":300}`\n"
+        "- `{\"action\":\"done\",\"summary\":\"what changed and how to verify it\"}`\n"
+        "\n"
+        "RULES\n"
+        "1. Paths are relative to the project root and use forward slashes. Nothing outside the root is reachable.\n"
+        "2. The JSON must be valid: escape newlines in strings as \\n, quotes as \\\" and backslashes as \\\\.\n"
+        "3. Read a file before you edit it. Prefer replace_in_file for small edits; \"old\" must match the file "
+        "exactly and occur exactly once. write_file replaces the whole file, so send all of it.\n"
+        "4. After sending actions, stop and wait for the results. Never invent results.\n"
+        "5. Use the shell below for commands. They are non-interactive: no prompts, no editors, no servers that keep running.\n"
+        "6. If you need a decision from me, ask in plain text with no agent block.\n"
+        "7. When the task is complete and verified, send the done action.\n"
+        "\n"
+        "ENVIRONMENT\n"
+        "Project folder: %1\nOperating system: %2\nShell: %3\n"
+        "\n"
+        "TASK\n%4\n"
+        "\n"
+        "Start by exploring the project.")
+        .arg(workspaceName, platform, shell, task.trimmed());
+}
+
+static QString str(const QJsonObject &o, std::initializer_list<const char *> keys)
+{
+    for (const char *k : keys) {
+        const QJsonValue v = o.value(QLatin1String(k));
+        if (v.isString())
+            return v.toString();
+    }
+    return QString();
+}
+
+static bool has(const QJsonObject &o, std::initializer_list<const char *> keys)
+{
+    for (const char *k : keys)
+        if (o.value(QLatin1String(k)).isString())
+            return true;
+    return false;
+}
+
+static int num(const QJsonObject &o, const char *key, int fallback)
+{
+    const QJsonValue v = o.value(QLatin1String(key));
+    if (v.isDouble())
+        return v.toInt();
+    if (v.isString()) {
+        bool ok = false;
+        const int n = v.toString().toInt(&ok);
+        if (ok)
+            return n;
+    }
+    return fallback;
+}
+
+static AgentAction fromObject(const QJsonObject &o)
+{
+    AgentAction a;
+    a.raw = o;
+    a.name = str(o, {"action", "tool", "type"}).trimmed().toLower();
+    a.path = str(o, {"path", "file", "filename"}).trimmed();
+    if (a.path.startsWith(QLatin1String("./")))
+        a.path = a.path.mid(2);
+
+    const QString n = a.name;
+    if (n == QLatin1String("read_file") || n == QLatin1String("read")) {
+        a.type = AgentAction::ReadFile;
+        a.startLine = qMax(0, num(o, "start_line", 0));
+        a.endLine = qMax(0, num(o, "end_line", 0));
+        if (a.path.isEmpty())
+            a.error = QStringLiteral("read_file needs \"path\"");
+    } else if (n == QLatin1String("list_dir") || n == QLatin1String("list") || n == QLatin1String("ls")) {
+        a.type = AgentAction::ListDir;
+        if (a.path.isEmpty())
+            a.path = QStringLiteral(".");
+        a.depth = qBound(1, num(o, "depth", 1), 6);
+    } else if (n == QLatin1String("write_file") || n == QLatin1String("write") || n == QLatin1String("create_file")) {
+        a.type = AgentAction::WriteFile;
+        a.content = str(o, {"content", "text", "contents"});
+        if (a.path.isEmpty())
+            a.error = QStringLiteral("write_file needs \"path\"");
+        else if (!has(o, {"content", "text", "contents"}))
+            a.error = QStringLiteral("write_file needs \"content\"");
+    } else if (n == QLatin1String("replace_in_file") || n == QLatin1String("edit_file") || n == QLatin1String("replace")) {
+        a.type = AgentAction::ReplaceInFile;
+        a.oldText = str(o, {"old", "old_text", "search", "find"});
+        a.newText = str(o, {"new", "new_text", "replace", "replacement"});
+        if (a.path.isEmpty())
+            a.error = QStringLiteral("replace_in_file needs \"path\"");
+        else if (a.oldText.isEmpty())
+            a.error = QStringLiteral("replace_in_file needs a non-empty \"old\"");
+        else if (!has(o, {"new", "new_text", "replace", "replacement"}))
+            a.error = QStringLiteral("replace_in_file needs \"new\" (use \"\" to delete)");
+    } else if (n == QLatin1String("run_command") || n == QLatin1String("run") || n == QLatin1String("shell")) {
+        a.type = AgentAction::RunCommand;
+        a.command = str(o, {"command", "cmd"}).trimmed();
+        a.cwd = str(o, {"cwd", "dir", "workdir"}).trimmed();
+        a.timeoutSec = qMax(0, num(o, "timeout", 0));
+        if (a.command.isEmpty())
+            a.error = QStringLiteral("run_command needs \"command\"");
+    } else if (n == QLatin1String("done") || n == QLatin1String("finish") || n == QLatin1String("complete")) {
+        a.type = AgentAction::Done;
+        a.summary = str(o, {"summary", "message", "result"});
+    } else {
+        a.error = QStringLiteral("unknown action \"%1\"").arg(a.name);
+    }
+    if (!a.error.isEmpty())
+        a.type = AgentAction::Invalid;
+    return a;
+}
+
+// Copilot sometimes leaks the fence's language label into the block's text
+// ("agent\n{...}") or wraps the JSON in prose; find the JSON itself.
+static QString jsonCandidate(const QString &block)
+{
+    QString t = block.trimmed();
+    static const QRegularExpression label(QStringLiteral("^(agent|json|jsonc)\\s*\\n"),
+                                          QRegularExpression::CaseInsensitiveOption);
+    t.remove(label);
+    t = t.trimmed();
+    if (t.startsWith(QLatin1Char('{')) || t.startsWith(QLatin1Char('[')))
+        return t;
+    const int a = t.indexOf(QLatin1Char('{'));
+    const int b = t.lastIndexOf(QLatin1Char('}'));
+    if (a >= 0 && b > a)
+        return t.mid(a, b - a + 1);
+    return QString();
+}
+
+static bool looksLikeAction(const QString &text)
+{
+    static const QRegularExpression re(QStringLiteral("\"(action|tool)\"\\s*:"));
+    return re.match(text).hasMatch();
+}
+
+QList<AgentAction> parseBlocks(const QStringList &blocks)
+{
+    QList<AgentAction> out;
+    for (const QString &block : blocks) {
+        const QString json = jsonCandidate(block);
+        if (json.isEmpty())
+            continue;
+
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(json.toUtf8(), &err);
+        if (err.error != QJsonParseError::NoError) {
+            if (looksLikeAction(json)) {
+                AgentAction bad;
+                bad.error = QStringLiteral("invalid JSON (%1 at offset %2)")
+                                .arg(err.errorString()).arg(err.offset);
+                bad.name = QStringLiteral("?");
+                out.append(bad);
+            }
+            continue;
+        }
+
+        QJsonArray items;
+        if (doc.isArray()) {
+            items = doc.array();
+        } else {
+            const QJsonObject o = doc.object();
+            if (o.value(QLatin1String("actions")).isArray())
+                items = o.value(QLatin1String("actions")).toArray();
+            else
+                items.append(o);
+        }
+        for (const QJsonValue &v : items) {
+            if (!v.isObject())
+                continue;
+            const QJsonObject o = v.toObject();
+            if (!o.contains(QLatin1String("action")) && !o.contains(QLatin1String("tool")))
+                continue; // ordinary JSON shown as an example
+            out.append(fromObject(o));
+        }
+    }
+    return out;
+}
+
+QStringList extractFencedBlocks(const QString &markdown)
+{
+    QStringList out;
+    static const QRegularExpression re(
+        QStringLiteral("(`{3,})[ \\t]*(agent|json)[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*\\1"),
+        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
+    auto it = re.globalMatch(markdown);
+    while (it.hasNext())
+        out.append(it.next().captured(3));
+    return out;
+}
+
+QString fence(const QString &body, const QString &lang)
+{
+    int longest = 0, run = 0;
+    for (const QChar c : body) {
+        run = (c == QLatin1Char('`')) ? run + 1 : 0;
+        longest = qMax(longest, run);
+    }
+    const QString f(qMax(3, longest + 1), QLatin1Char('`'));
+    QString b = body;
+    if (!b.endsWith(QLatin1Char('\n')))
+        b += QLatin1Char('\n');
+    return f + lang + QLatin1Char('\n') + b + f;
+}
+
+QString truncateMiddle(const QString &text, int limit)
+{
+    if (limit <= 0 || text.size() <= limit)
+        return text;
+    const int head = limit * 2 / 5;
+    const int tail = limit - head;
+    const int cut = text.size() - head - tail;
+    return text.left(head)
+         + QStringLiteral("\n... [%1 characters omitted] ...\n").arg(cut)
+         + text.right(tail);
+}
+
+QString normalized(const QString &text)
+{
+    QString out;
+    out.reserve(text.size());
+    for (const QChar c : text)
+        if (!c.isSpace())
+            out.append(c);
+    return out;
+}
+
+QString actionLabel(const AgentAction &a)
+{
+    switch (a.type) {
+    case AgentAction::ReadFile:      return QStringLiteral("read_file %1").arg(a.path);
+    case AgentAction::ListDir:       return QStringLiteral("list_dir %1").arg(a.path);
+    case AgentAction::WriteFile:     return QStringLiteral("write_file %1").arg(a.path);
+    case AgentAction::ReplaceInFile: return QStringLiteral("replace_in_file %1").arg(a.path);
+    case AgentAction::RunCommand:    return QStringLiteral("run_command `%1`").arg(a.command);
+    case AgentAction::Done:          return QStringLiteral("done");
+    case AgentAction::Invalid:       return QStringLiteral("%1 (invalid)").arg(a.name.isEmpty() ? QStringLiteral("?") : a.name);
+    }
+    return QString();
+}
+
+QString formatResults(const QList<ActionResult> &results, int step, int charLimit)
+{
+    // Share the budget between the actions so one huge file cannot crowd out
+    // the compiler error that came after it.
+    const int overhead = 400 + 160 * int(results.size());
+    const int perItem = results.isEmpty() ? charLimit
+                       : qMax(400, (charLimit - overhead) / int(results.size()));
+
+    QString msg = QStringLiteral("[agent results, step %1]\n").arg(step);
+    int i = 1;
+    for (const ActionResult &r : results) {
+        msg += QStringLiteral("\n%1. %2 -> %3\n").arg(i++).arg(actionLabel(r.action), r.status);
+        if (!r.output.isEmpty())
+            msg += fence(truncateMiddle(r.output, perItem)) + QLatin1Char('\n');
+    }
+    msg += QStringLiteral(
+        "\nContinue with the next agent blocks. If the task is finished and verified, send the done action.");
+    return msg;
+}
+
+} // namespace AgentProtocol
