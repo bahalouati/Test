@@ -77,7 +77,7 @@ private slots:
         QSignalSpy ok(m_edge, &EdgeSession::connected);
         QSignalSpy bad(m_edge, &EdgeSession::failed);
         m_edge->start();
-        QVERIFY2(QTest::qWaitFor([&] { return !ok.isEmpty() || !bad.isEmpty(); }, 60000), "browser never answered");
+        QVERIFY2(QTest::qWaitFor([&] { return !ok.isEmpty() || !bad.isEmpty(); }, 120000), "browser never answered");
         QVERIFY2(bad.isEmpty(), bad.isEmpty() ? "" : qPrintable(bad[0][0].toString()));
         QVERIFY(m_edge->isConnected());
     }

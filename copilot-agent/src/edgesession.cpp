@@ -18,7 +18,7 @@
 namespace {
 
 const int kHttpTimeoutMs = 3000;
-const int kLaunchWaitSteps = 60;      // x 500 ms
+const int kLaunchWaitSteps = 180;     // x 500 ms: a first start on a slow or managed PC can take a while
 const int kCallTimeoutMs = 30000;
 const int kHealthTimeoutMs = 5000;
 
