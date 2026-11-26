@@ -78,9 +78,16 @@ jobs:
           arch: x86
           toolset: "14.29"
 
+      # aqtinstall's 7z dependencies have no wheels for the runner's default
+      # Python (3.15) and fail to build; pin one they support.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install Qt 5.12.2 (win32_msvc2017)
         uses: jurplel/install-qt-action@v4
         with:
+          setup-python: false
           version: "5.12.2"
           host: windows
           target: desktop
