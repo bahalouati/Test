@@ -1,5 +1,6 @@
 #include "agentprotocol.h"
 
+#include <QCryptographicHash>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -287,6 +288,97 @@ QString normalized(const QString &text)
         if (!c.isSpace())
             out.append(c);
     return out;
+}
+
+static int lineCount(const QString &t)
+{
+    if (t.isEmpty())
+        return 0;
+    return int(t.count(QLatin1Char('\n'))) + (t.endsWith(QLatin1Char('\n')) ? 0 : 1);
+}
+
+QStringList writeWarnings(const QString &oldText, bool existed, const QString &newText)
+{
+    QStringList w;
+    static const QRegularExpression placeholders[] = {
+        QRegularExpression(QStringLiteral("\\.\\.\\.\\s*\\(?\\s*(rest|remaining|existing|other|previous|unchanged|same|more)\\b"),
+                           QRegularExpression::CaseInsensitiveOption),
+        QRegularExpression(QStringLiteral("\\b(rest|remainder) of (the )?(file|code|class|function|method|implementation)\\b"),
+                           QRegularExpression::CaseInsensitiveOption),
+        QRegularExpression(QStringLiteral("\\b(existing|unchanged|previous|original) (code|content|implementation)( (here|remains|stays|unchanged))?\\b"),
+                           QRegularExpression::CaseInsensitiveOption),
+        // A line that is nothing but "..." (optionally commented).
+        QRegularExpression(QStringLiteral("^\\s*(//|#|--|/\\*|<!--)?\\s*(\\.\\.\\.|\u2026)\\s*(\\*/|-->)?\\s*$"),
+                           QRegularExpression::MultilineOption),
+    };
+    for (const QRegularExpression &re : placeholders) {
+        const QRegularExpressionMatch m = re.match(newText);
+        // Only new placeholders count: the file may legitimately contain "...".
+        if (m.hasMatch() && !oldText.contains(m.captured(0))) {
+            w << QStringLiteral("The new content contains \"%1\", which looks like a placeholder for code "
+                                "Copilot left out. Applying it would delete that code.")
+                     .arg(m.captured(0).trimmed().left(80));
+            break;
+        }
+    }
+    if (existed) {
+        const int before = lineCount(oldText), after = lineCount(newText);
+        if (after == 0 && before > 0)
+            w << QStringLiteral("This empties a file that has %1 lines.").arg(before);
+        else if (before >= 30 && after * 2 < before)
+            w << QStringLiteral("The file shrinks from %1 to %2 lines. Check that nothing was cut off by mistake.")
+                     .arg(before).arg(after);
+    }
+    return w;
+}
+
+QStringList commandWarnings(const QString &command)
+{
+    struct Rule { const char *pattern; const char *why; };
+    static const Rule rules[] = {
+        {"\\brm\\s+(-\\w*\\s+)*-\\w*[rRf]", "deletes files (recursively or forced)"},
+        {"\\b(rmdir|rd)\\s+(/\\w\\s+)*/s\\b", "deletes a folder tree"},
+        {"\\b(del|erase)\\b.*\\s/[sq]\\b", "deletes files without asking"},
+        {"\\bRemove-Item\\b.*-Recurse", "deletes a folder tree"},
+        {"\\bformat\\s+[a-z]:", "formats a drive"},
+        {"\\b(mkfs|diskpart|fdisk)\\b|\\bdd\\s+if=", "writes to disks directly"},
+        {"\\bgit\\s+(reset\\s+--hard|clean\\s+-\\w*f|checkout\\s+--?\\s*\\.|restore\\s+\\.)", "throws away uncommitted work"},
+        {"\\bgit\\s+push\\b.*(--force\\b|\\s-f\\b|--force-with-lease)", "rewrites history on the remote"},
+        {"\\bgit\\s+push\\b", "publishes commits to the remote"},
+        {"\\b(sudo|su|runas|doas)\\b|Start-Process\\b.*-Verb\\s+RunAs", "asks for administrator rights"},
+        {"\\b(shutdown|reboot|halt|poweroff)\\b|Restart-Computer|Stop-Computer", "shuts down or restarts the computer"},
+        {"\\breg\\s+(add|delete|import)\\b|Set-ItemProperty\\b.*HK(LM|CU)", "changes the Windows registry"},
+        {"(curl|wget|iwr|Invoke-WebRequest|irm|Invoke-RestMethod)\\b[^|]*\\|\\s*(sh|bash|zsh|iex|Invoke-Expression|powershell|pwsh|python)\\b",
+         "downloads something and runs it straight away"},
+        {"\\b(chmod|icacls|takeown)\\b.*(-R|/t)\\b", "changes permissions recursively"},
+        {"\\b(npm|pip|pip3|choco|winget|apt|apt-get|brew)\\s+(install|i)\\b.*\\s(-g|--global|--user)\\b|\\b(choco|winget|apt|apt-get|brew)\\s+install\\b",
+         "installs software system-wide"},
+        {"\\bsetx\\b|\\[Environment\\]::SetEnvironmentVariable", "changes environment variables permanently"},
+    };
+    QStringList w;
+    for (const Rule &r : rules) {
+        const QRegularExpression re(QString::fromLatin1(r.pattern), QRegularExpression::CaseInsensitiveOption);
+        if (re.match(command).hasMatch()) {
+            const QString why = QString::fromLatin1(r.why);
+            if (!w.contains(why))
+                w << why;
+        }
+    }
+    for (QString &s : w)
+        s = QStringLiteral("This command ") + s + QLatin1Char('.');
+    return w;
+}
+
+QByteArray stepSignature(const QList<ActionResult> &results)
+{
+    QCryptographicHash h(QCryptographicHash::Sha1);
+    for (const ActionResult &r : results) {
+        h.addData(QJsonDocument(r.action.raw).toJson(QJsonDocument::Compact));
+        h.addData(r.status.toUtf8());
+        h.addData(r.output.toUtf8());
+        h.addData("\x1e", 1);
+    }
+    return h.result();
 }
 
 QString actionLabel(const AgentAction &a)

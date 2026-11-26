@@ -48,4 +48,19 @@ QString normalized(const QString &text);
 
 QString actionLabel(const AgentAction &a);
 
+// Copilot can get things wrong. These look for the usual ways and return
+// one human-readable warning per problem, shown in the approval dialog.
+//
+// write_file: placeholders such as "// ... rest of the file unchanged ..."
+// that would replace real code, a file that shrinks drastically, or an
+// existing file being emptied.
+QStringList writeWarnings(const QString &oldText, bool existed, const QString &newText);
+// run_command: deleting recursively, history-rewriting git commands,
+// admin rights, piping a download into a shell, and the like.
+QStringList commandWarnings(const QString &command);
+
+// Identifies a step by its actions and their results, to notice Copilot
+// repeating itself.
+QByteArray stepSignature(const QList<ActionResult> &results);
+
 } // namespace AgentProtocol

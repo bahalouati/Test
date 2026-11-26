@@ -50,6 +50,7 @@ private:
     QPushButton *m_readReply = nullptr;
     QPushButton *m_copyPrompt = nullptr;
     QPushButton *m_pasteReply = nullptr;
+    QPushButton *m_undo = nullptr;
     QToolBar *m_browserBar = nullptr;
     QCheckBox *m_autoLoop = nullptr;
     QSpinBox *m_maxSteps = nullptr;

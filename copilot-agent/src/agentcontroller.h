@@ -51,6 +51,15 @@ public:
     bool taskActive() const { return m_active; }
     int step() const { return m_step; }
     QString pendingResults() const { return m_pending; }
+
+    // Every file the agent wrote or edited, newest last, with what was there
+    // before. Backups also go to disk (backupDir()) in case the app closes.
+    bool canUndo() const { return !m_undo.isEmpty() && m_state != State::RunningActions; }
+    QString undoLabel() const;
+    // Puts the newest changed file back as it was. Copilot is told in the
+    // next message, so its picture of the project stays right.
+    bool undoLast(QString *message);
+    QString backupDir() const { return m_backupDir; }
     QString lastPrompt() const { return m_lastPrompt; }
 
 public slots:
@@ -68,6 +77,7 @@ signals:
     void stateChanged(AgentController::State state);
     void taskFinished(const QString &summary);
     void commandOutput(const QString &chunk);
+    void undoChanged();
 
 private:
     void setState(State s);
@@ -76,6 +86,13 @@ private:
     void record(const ActionResult &r);
     void send(QString text);   // by value: callers pass m_pending, which send() clears
     void skipRemaining(const QString &why);
+    struct FileChange {
+        QString path;          // relative to the workspace
+        bool existed = false;
+        QByteArray before;
+    };
+    FileChange snapshot(const QString &path) const;
+    void remember(const FileChange &c);
 
     Workspace m_ws;
     CommandRunner m_runner;
@@ -93,5 +110,10 @@ private:
     QString m_doneSummary;
     bool m_doneSeen = false;
     QElapsedTimer m_sinceReply;
+    QList<FileChange> m_undo;
+    QString m_backupDir;
+    QStringList m_notes;        // told to Copilot with the next message
+    QByteArray m_lastSignature; // of the previous step, to spot repeats
+    int m_failStreak = 0;       // steps in a row where nothing succeeded
     quint64 m_sendSerial = 0;   // invalidates a pending delayed send
 };

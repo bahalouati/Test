@@ -26,6 +26,30 @@ agent panel. You pick a project folder and describe a task. The app then:
   reply before sending results (**Pause before auto-send** in Settings, default 5 s), so it
   keeps a human pace.
 
+## When Copilot gets it wrong
+
+Copilot can and will make mistakes, so the app assumes it will:
+
+- **Approval dialog warnings.** The dialog shows a red box, and makes *Reject* the default
+  button, when:
+  - a write contains a placeholder such as `// ... rest of the file unchanged ...` that
+    would delete real code;
+  - a file would shrink to less than half its size, or be emptied;
+  - a command deletes recursively, rewrites git history, needs admin rights, pipes a
+    download into a shell, changes the registry or environment, or shuts the PC down.
+- **Undo change** puts back the last file the agent wrote or edited, newest first, as many
+  times as you like. A new file is removed again. Copilot is told in the next message, so it
+  knows. Every overwritten file is also backed up under the app's data folder
+  (`%LOCALAPPDATA%\CopilotAgent\Copilot Agent\backups` on Windows).
+- **Stuck loops.** If Copilot repeats the exact same step with the same results, or three
+  steps in a row all fail, auto-loop pauses for you to look at the chat. The next message
+  asks Copilot to try a different approach.
+- **Broken replies.** Invalid JSON, unknown actions, missing fields, edits whose "old" text
+  doesn't match, and paths outside the project folder are refused. The error goes back to
+  Copilot to correct. After a rejected or failed write or command, the rest of that step is
+  skipped rather than run on a wrong assumption.
+- The step limit (Settings) caps how long auto-loop runs unattended.
+
 ## Actions
 
 | Action            | Asks you first | What it does                                          |

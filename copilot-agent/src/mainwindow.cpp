@@ -162,6 +162,9 @@ void MainWindow::buildUi()
     manual->addWidget(m_readReply);
     manual->addWidget(m_copyPrompt);
     manual->addWidget(m_pasteReply);
+    m_undo = new QPushButton(tr("Undo change"), panel);
+    m_undo->setToolTip(tr("Put back the last file the agent wrote or edited; Copilot is told"));
+    manual->addWidget(m_undo);
     pl->addLayout(manual);
 
     m_log = new QTextBrowser(panel);
@@ -226,6 +229,18 @@ void MainWindow::wire()
     });
 
     connect(m_pasteReply, &QPushButton::clicked, this, &MainWindow::pasteReply);
+    connect(m_undo, &QPushButton::clicked, this, [this] {
+        const QString what = m_agent->undoLabel();
+        if (QMessageBox::question(this, tr("Undo change"), tr("Undo the last change: %1?").arg(what))
+            != QMessageBox::Yes)
+            return;
+        QString msg;
+        const bool ok = m_agent->undoLast(&msg);
+        appendLog(ok ? AgentController::LogKind::Info : AgentController::LogKind::Error,
+                  ok ? msg + tr(" Copilot will be told with the next message.") : msg);
+        updateButtons();
+    });
+    connect(m_agent, &AgentController::undoChanged, this, &MainWindow::updateButtons);
     connect(m_agent, &AgentController::sendPrompt, this, &MainWindow::deliverPrompt);
     connect(m_agent, &AgentController::log, this, &MainWindow::appendLog);
     connect(m_agent, &AgentController::stateChanged, this, &MainWindow::updateButtons);
@@ -320,6 +335,9 @@ void MainWindow::updateButtons()
     m_readReply->setEnabled(s != S::RunningActions);
     m_copyPrompt->setEnabled(!m_agent->lastPrompt().isEmpty());
     m_pasteReply->setEnabled(s != S::RunningActions);
+    m_undo->setEnabled(m_agent->canUndo());
+    m_undo->setToolTip(m_agent->canUndo() ? tr("Undo: %1").arg(m_agent->undoLabel())
+                                          : tr("Nothing to undo"));
 
     switch (s) {
     case S::Idle:              m_status->setText(m_agent->taskActive() ? tr("Waiting for you") : tr("Idle")); break;
@@ -362,10 +380,12 @@ void MainWindow::pasteReply()
 AgentController::Decision MainWindow::approve(AgentAction &a, QString *note)
 {
     QString preview;
+    QStringList warnings;
     if (a.type == AgentAction::WriteFile) {
         bool exists = false;
         const QString before = m_agent->workspace().currentContent(a.path, &exists);
         preview = LineDiff::unified(exists ? before : QString(), a.content, a.path);
+        warnings = AgentProtocol::writeWarnings(before, exists, a.content);
     } else if (a.type == AgentAction::ReplaceInFile) {
         QString err;
         bool exists = false;
@@ -376,10 +396,14 @@ AgentController::Decision MainWindow::approve(AgentAction &a, QString *note)
             return AgentController::Decision::Approve;
         }
         preview = LineDiff::unified(before, after, a.path);
+        // Old text: what is being replaced. Size checks do not apply to a snippet.
+        warnings = AgentProtocol::writeWarnings(a.oldText, false, a.newText);
+    } else if (a.type == AgentAction::RunCommand) {
+        warnings = AgentProtocol::commandWarnings(a.command);
     }
 
     QApplication::alert(this);
-    ApprovalDialog d(a, preview, m_agent->workspace().root(), this);
+    ApprovalDialog d(a, preview, m_agent->workspace().root(), warnings, this);
     d.exec();
     *note = d.note();
     switch (d.outcome()) {
