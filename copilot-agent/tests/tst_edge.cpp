@@ -10,6 +10,9 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QUrl>
+
+#include <memory>
+#include <utility>
 #include <QtTest>
 
 class TestEdge : public QObject
@@ -22,22 +25,26 @@ class TestEdge : public QObject
 
     QVariant eval(const QString &script)
     {
-        QVariant out;
-        bool done = false;
-        m_edge->evaluate(script, [&](const QVariant &v) { out = v; done = true; });
-        if (!QTest::qWaitFor([&] { return done; }, 10000))
-            qWarning("evaluate did not answer");
-        return out;
+        // Shared state: a late answer must not write into a dead stack frame.
+        auto result = std::make_shared<std::pair<bool, QVariant>>(false, QVariant());
+        m_edge->evaluate(script, [result](const QVariant &v) { *result = {true, v}; });
+        if (!QTest::qWaitFor([&] { return result->first; }, 10000))
+            qWarning("evaluate did not answer: %s", qPrintable(script.left(80)));
+        return result->second;
     }
 
     bool openMock(const QString &mode)
     {
         QUrl url = QUrl::fromLocalFile(QStringLiteral(MOCK_PAGE_PATH));
         url.setQuery(QStringLiteral("mode=") + mode);
-        bool done = false;
+        auto done = std::make_shared<bool>(false);
         m_edge->call(QStringLiteral("Page.navigate"), QJsonObject{{QStringLiteral("url"), url.toString()}},
-                     [&](const QJsonObject &, const QString &) { done = true; });
-        if (!QTest::qWaitFor([&] { return done; }, 10000))
+                     [done](const QJsonObject &, const QString &err) {
+            if (!err.isEmpty())
+                qWarning("Page.navigate: %s", qPrintable(err));
+            *done = true;
+        });
+        if (!QTest::qWaitFor([&] { return *done; }, 10000))
             return false;
         return QTest::qWaitFor([&] {
             return eval(QStringLiteral("document.readyState === 'complete' && !!document.querySelector('.editor') "
@@ -65,6 +72,8 @@ private slots:
 #endif
         m_edge->setExtraArguments(extra);
 
+        // Which tab it picks, for CI logs.
+        connect(m_edge, &EdgeSession::status, this, [](const QString &m) { qInfo("edge: %s", qPrintable(m)); });
         QSignalSpy ok(m_edge, &EdgeSession::connected);
         QSignalSpy bad(m_edge, &EdgeSession::failed);
         m_edge->start();

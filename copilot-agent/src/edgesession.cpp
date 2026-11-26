@@ -20,6 +20,7 @@ namespace {
 const int kHttpTimeoutMs = 3000;
 const int kLaunchWaitSteps = 60;      // x 500 ms
 const int kCallTimeoutMs = 30000;
+const int kHealthTimeoutMs = 5000;
 
 QString portFile(const QString &profileDir)
 {
@@ -58,7 +59,9 @@ EdgeSession::EdgeSession(QObject *parent)
         m_pending.clear();
         for (auto &cb : pending)
             cb(QJsonObject(), QStringLiteral("the browser connection closed"));
-        if (m_starting)
+        if (m_switching)
+            m_switching = false;   // closed on purpose to change tabs
+        else if (m_starting)
             fail(QStringLiteral("the browser closed the connection"));
         else if (was)
             emit disconnected();
@@ -234,6 +237,8 @@ void EdgeSession::waitForPort(int attemptsLeft)
 
 void EdgeSession::attach(int port)
 {
+    m_port = port;
+    m_triedNewTab = false;
     QPointer<EdgeSession> self(this);
     get(QUrl(QStringLiteral("http://127.0.0.1:%1/json/list").arg(port)), "GET",
         [self, port](int status, const QByteArray &body) {
@@ -243,77 +248,132 @@ void EdgeSession::attach(int port)
             self->fail(QStringLiteral("could not list the browser's tabs"));
             return;
         }
-        const QJsonArray targets = QJsonDocument::fromJson(body).array();
+        // Only ever use a tab that is showing Copilot (or, right after we
+        // launched it, Microsoft's sign-in on the way there). Never borrow
+        // some other blank/new tab: Edge keeps hidden preloaded pages that
+        // can be frozen and then never run anything.
         const QString host = self->m_startUrl.host();
-        QJsonObject best, blank, anyPage;
-        for (const QJsonValue &v : targets) {
+        QJsonObject best;
+        for (const QJsonValue &v : QJsonDocument::fromJson(body).array()) {
             const QJsonObject t = v.toObject();
             if (t.value(QStringLiteral("type")).toString() != QLatin1String("page"))
                 continue;
             const QUrl u(t.value(QStringLiteral("url")).toString());
-            if (anyPage.isEmpty())
-                anyPage = t;
-            if (!host.isEmpty() && u.host() == host && best.isEmpty())
+            const bool copilot = !host.isEmpty() && u.host() == host;
+            const bool signIn = self->m_launched && u.host().contains(QLatin1String("login.microsoftonline"));
+            if (copilot || signIn) {
                 best = t;
-            const QString s = u.toString();
-            if (blank.isEmpty() && (s == QLatin1String("about:blank") || s.contains(QLatin1String("newtab"))))
-                blank = t;
+                if (copilot)
+                    break;
+            }
         }
-        const QString wsKey = QStringLiteral("webSocketDebuggerUrl");
-        if (!best.isEmpty()) {
-            self->openSocket(QUrl(best.value(wsKey).toString()), false);
-        } else if (!blank.isEmpty()) {
-            self->openSocket(QUrl(blank.value(wsKey).toString()), true);
-        } else if (self->m_launched && !anyPage.isEmpty()) {
-            // We just opened it with the Copilot URL; it may be on the
-            // sign-in page, on another host.
-            self->openSocket(QUrl(anyPage.value(wsKey).toString()), false);
-        } else {
-            // Open a new tab with Copilot (newer browsers want PUT here).
-            QUrl newUrl(QStringLiteral("http://127.0.0.1:%1/json/new").arg(port));
-            newUrl.setQuery(QString::fromLatin1(self->m_startUrl.toEncoded()));
-            self->get(newUrl, "PUT", [self](int status, const QByteArray &body) {
-                if (!self)
-                    return;
-                const QJsonObject t = QJsonDocument::fromJson(body).object();
-                if (status != 200 || t.isEmpty()) {
-                    self->fail(QStringLiteral("could not open a tab for Copilot"));
-                    return;
-                }
-                self->openSocket(QUrl(t.value(QStringLiteral("webSocketDebuggerUrl")).toString()), false);
-            });
-        }
+        if (!best.isEmpty())
+            self->openSocket(best);
+        else
+            self->openNewTab(port);
     });
 }
 
-void EdgeSession::openSocket(const QUrl &ws, bool navigate)
+void EdgeSession::openNewTab(int port)
 {
-    if (!ws.isValid()) {
+    m_triedNewTab = true;
+    QPointer<EdgeSession> self(this);
+    QUrl newUrl(QStringLiteral("http://127.0.0.1:%1/json/new").arg(port));
+    newUrl.setQuery(QString::fromLatin1(m_startUrl.isValid() ? m_startUrl.toEncoded() : QByteArray("about:blank")));
+    // Newer browsers want PUT here; older ones GET.
+    get(newUrl, "PUT", [self, newUrl](int status, const QByteArray &body) {
+        if (!self)
+            return;
+        auto use = [self](const QByteArray &b) {
+            const QJsonObject t = QJsonDocument::fromJson(b).object();
+            if (t.isEmpty()) {
+                self->fail(QStringLiteral("could not open a tab for Copilot"));
+                return;
+            }
+            self->openSocket(t);
+        };
+        if (status == 200) {
+            use(body);
+            return;
+        }
+        self->get(newUrl, "GET", [self, use](int status2, const QByteArray &body2) {
+            if (!self)
+                return;
+            if (status2 != 200)
+                self->fail(QStringLiteral("could not open a tab for Copilot"));
+            else
+                use(body2);
+        });
+    });
+}
+
+void EdgeSession::wake()
+{
+    if (!isConnected())
+        return;
+    // Undo Edge's tab freezing ("sleeping tabs") and show the tab, so its
+    // scripts run; pretend the window has focus so editors accept input.
+    auto ignore = [](const QJsonObject &, const QString &) {};
+    call(QStringLiteral("Page.setWebLifecycleState"), QJsonObject{{QStringLiteral("state"), QStringLiteral("active")}}, ignore);
+    call(QStringLiteral("Page.bringToFront"), QJsonObject(), ignore);
+    call(QStringLiteral("Emulation.setFocusEmulationEnabled"), QJsonObject{{QStringLiteral("enabled"), true}}, ignore);
+}
+
+void EdgeSession::openSocket(const QJsonObject &target)
+{
+    const QUrl ws(target.value(QStringLiteral("webSocketDebuggerUrl")).toString());
+    const QString pageUrl = target.value(QStringLiteral("url")).toString();
+    if (!ws.isValid() || ws.isEmpty()) {
         fail(QStringLiteral("the tab has no remote-control address"));
         return;
     }
-    m_navigateOnOpen = navigate;
     QPointer<EdgeSession> self(this);
-    // Single-shot connection for this attempt.
     auto conn = std::make_shared<QMetaObject::Connection>();
-    *conn = connect(&m_ws, &QWebSocket::connected, this, [self, conn] {
+    *conn = connect(&m_ws, &QWebSocket::connected, this, [self, conn, pageUrl] {
         QObject::disconnect(*conn);
         if (!self)
             return;
         self->m_ready = true;
-        // Makes the page behave as if its window had focus, so editors
-        // accept typed text and Enter even while the user works elsewhere.
-        self->call(QStringLiteral("Emulation.setFocusEmulationEnabled"),
-                   QJsonObject{{QStringLiteral("enabled"), true}}, [](const QJsonObject &, const QString &) {});
-        if (self->m_navigateOnOpen && self->m_startUrl.isValid())
-            self->call(QStringLiteral("Page.navigate"),
-                       QJsonObject{{QStringLiteral("url"), self->m_startUrl.toString()}},
-                       [](const QJsonObject &, const QString &) {});
-        self->m_starting = false;
-        emit self->status(tr("Connected to the browser."));
-        emit self->connected();
+        self->wake();
+        // Health check: a tab that cannot run a trivial script is no use.
+        auto answered = std::make_shared<bool>(false);
+        self->call(QStringLiteral("Runtime.evaluate"),
+                   QJsonObject{{QStringLiteral("expression"), QStringLiteral("1+1")},
+                               {QStringLiteral("returnByValue"), true}},
+                   [self, answered, pageUrl](const QJsonObject &r, const QString &err) {
+            if (*answered || !self)
+                return;
+            *answered = true;
+            if (!err.isEmpty() || r.value(QStringLiteral("result")).toObject().value(QStringLiteral("value")).toInt() != 2) {
+                self->retryOrFail(QStringLiteral("the browser tab did not run scripts"));
+                return;
+            }
+            self->m_starting = false;
+            emit self->status(tr("Connected to the browser (%1).").arg(pageUrl.left(80)));
+            emit self->connected();
+        });
+        QTimer::singleShot(kHealthTimeoutMs, self, [self, answered] {
+            if (!self || *answered)
+                return;
+            *answered = true;
+            self->retryOrFail(QStringLiteral("the browser tab did not respond"));
+        });
     });
+    emit status(tr("Attaching to %1").arg(pageUrl.left(80)));
     m_ws.open(ws);
+}
+
+void EdgeSession::retryOrFail(const QString &why)
+{
+    if (m_triedNewTab || m_port <= 0) {
+        fail(why);
+        return;
+    }
+    // Drop this tab quietly and use a fresh one instead.
+    m_switching = true;
+    m_ready = false;
+    m_ws.abort();
+    openNewTab(m_port);
 }
 
 void EdgeSession::fail(const QString &why)

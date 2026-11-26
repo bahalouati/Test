@@ -58,6 +58,8 @@ public:
     // Real key press and real text input, as if typed by the user.
     void pressEnter();
     void insertText(const QString &text, std::function<void(bool)> done);
+    // Unfreezes and shows the Copilot tab; call before sending.
+    void wake();
 
 signals:
     void connected();
@@ -71,7 +73,9 @@ private:
     void launch();
     void waitForPort(int attemptsLeft);
     void attach(int port);
-    void openSocket(const QUrl &ws, bool navigate);
+    void openSocket(const QJsonObject &target);
+    void openNewTab(int port);
+    void retryOrFail(const QString &why);
     void fail(const QString &why);
     void get(const QUrl &url, const QByteArray &verb, std::function<void(int status, const QByteArray &body)> done);
 
@@ -84,7 +88,9 @@ private:
     bool m_ready = false;
     bool m_starting = false;
     bool m_launched = false;
-    bool m_navigateOnOpen = false;
+    bool m_triedNewTab = false;
+    bool m_switching = false;
+    int m_port = 0;
     qint64 m_pid = 0;
     int m_nextId = 1;
     QHash<int, std::function<void(const QJsonObject &, const QString &)>> m_pending;

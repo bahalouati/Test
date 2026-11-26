@@ -484,6 +484,7 @@ void MainWindow::deliverPrompt(const QString &text)
         return;
     }
     if (m_edge->isConnected()) {
+        m_edge->wake();
         m_bridge->sendPrompt(text);
         return;
     }
