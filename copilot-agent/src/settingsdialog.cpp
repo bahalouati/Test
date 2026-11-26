@@ -1,6 +1,7 @@
 #include "settingsdialog.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialogButtonBox>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -27,7 +28,10 @@ AppSettings AppSettings::load()
     QSettings q;
     AppSettings s;
     s.url = q.value(QStringLiteral("url"), s.url).toString();
-    s.externalBrowser = q.value(QStringLiteral("externalBrowser"), s.externalBrowser).toBool();
+    s.mode = q.value(QStringLiteral("mode"), s.mode).toString();
+    if (s.mode != QLatin1String("edge") && s.mode != QLatin1String("clipboard") && s.mode != QLatin1String("builtin"))
+        s.mode = QStringLiteral("edge");
+    s.browserPath = q.value(QStringLiteral("browserPath")).toString();
     s.autoLoop = q.value(QStringLiteral("autoLoop"), s.autoLoop).toBool();
     s.maxSteps = q.value(QStringLiteral("maxSteps"), s.maxSteps).toInt();
     s.charLimit = q.value(QStringLiteral("charLimit"), s.charLimit).toInt();
@@ -42,7 +46,8 @@ void AppSettings::save() const
 {
     QSettings q;
     q.setValue(QStringLiteral("url"), url);
-    q.setValue(QStringLiteral("externalBrowser"), externalBrowser);
+    q.setValue(QStringLiteral("mode"), mode);
+    q.setValue(QStringLiteral("browserPath"), browserPath);
     q.setValue(QStringLiteral("autoLoop"), autoLoop);
     q.setValue(QStringLiteral("maxSteps"), maxSteps);
     q.setValue(QStringLiteral("charLimit"), charLimit);
@@ -81,14 +86,21 @@ SettingsDialog::SettingsDialog(const AppSettings &s, QWidget *parent)
     hint->setWordWrap(true);
     form->addRow(QString(), hint);
 
-    m_external = new QCheckBox(tr("Use Copilot in my own browser (pass messages through the clipboard)"), this);
-    m_external->setChecked(s.externalBrowser);
-    form->addRow(QString(), m_external);
-    auto *extHint = new QLabel(tr("This app's built-in browser is Chromium %1. Microsoft 365 Copilot needs a "
-                                  "current browser; with Qt older than 5.15 the page will not load inside the app.")
-                                   .arg(QStringLiteral(QTWEBENGINECORE_CHROMIUM_VERSION_HINT)), this);
-    extHint->setWordWrap(true);
-    form->addRow(QString(), extHint);
+    m_mode = new QComboBox(this);
+    m_mode->addItem(tr("Microsoft Edge, automatic (recommended)"), QStringLiteral("edge"));
+    m_mode->addItem(tr("My own browser, copy & paste"), QStringLiteral("clipboard"));
+    m_mode->addItem(tr("Built-in browser (Chromium %1)").arg(QStringLiteral(QTWEBENGINECORE_CHROMIUM_VERSION_HINT)),
+                    QStringLiteral("builtin"));
+    m_mode->setCurrentIndex(qMax(0, m_mode->findData(s.mode)));
+    form->addRow(tr("Copilot runs in:"), m_mode);
+    auto *modeHint = new QLabel(tr("Edge: the app opens Copilot in its own Edge window and types, sends and "
+                                   "reads replies there. Sign in once in that window. The built-in browser "
+                                   "is too old for Microsoft 365 with Qt 5.12."), this);
+    modeHint->setWordWrap(true);
+    form->addRow(QString(), modeHint);
+    m_browserPath = new QLineEdit(s.browserPath, this);
+    m_browserPath->setPlaceholderText(tr("Automatic: Edge, else Chrome"));
+    form->addRow(tr("Browser program:"), m_browserPath);
 
     m_maxSteps = spin(1, 500, s.maxSteps, tr(" steps"), this);
     form->addRow(tr("Auto-loop limit:"), m_maxSteps);
@@ -140,7 +152,8 @@ AppSettings SettingsDialog::settings() const
 {
     AppSettings s = m_s;
     s.url = m_url->text().trimmed();
-    s.externalBrowser = m_external->isChecked();
+    s.mode = m_mode->currentData().toString();
+    s.browserPath = m_browserPath->text().trimmed();
     s.maxSteps = m_maxSteps->value();
     s.charLimit = m_charLimit->value();
     s.commandTimeoutSec = m_cmdTimeout->value();

@@ -2,6 +2,7 @@
 // Chromium: fill the input, press send, wait out the "streaming", and check
 // that exactly the new agent block comes back.
 #include "copilotbridge.h"
+#include "webenginetransport.h"
 
 #include <QApplication>
 #include <QJsonArray>
@@ -10,6 +11,8 @@
 #include <QSignalSpy>
 #include <QWebEnginePage>
 #include <QWebEngineProfile>
+#include <QWebEngineView>
+#include <QKeyEvent>
 #include <QtTest>
 
 class TestBridge : public QObject
@@ -40,16 +43,33 @@ private slots:
         QTest::newRow("lexical") << "lexical";
         QTest::newRow("plain contenteditable") << "plain";
         QTest::newRow("textarea") << "textarea";
+        QTest::newRow("strict (real Enter only)") << "strict";
     }
 
     void roundTrip()
     {
         QFETCH(QString, mode);
         QWebEngineProfile profile;   // off the record
-        QWebEnginePage page(&profile);
+        QWebEngineView view;         // a real widget, for real key presses
+        auto *pagePtr = new QWebEnginePage(&profile, &view);
+        QWebEnginePage &page = *pagePtr;
+        view.setPage(pagePtr);
+        view.resize(800, 600);
+        view.show();
         QVERIFY(load(page, mode));
 
-        CopilotBridge bridge(&page);
+        CopilotBridge bridge;
+        attachWebEnginePage(&bridge, &page);
+        // Same as the app: Enter through the widget hosting the page.
+        bridge.setKeyPresser([&view] {
+            QWidget *target = view.focusProxy() ? view.focusProxy() : &view;
+            target->setFocus();
+            QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+            QKeyEvent release(QEvent::KeyRelease, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+            QCoreApplication::sendEvent(target, &press);
+            QCoreApplication::sendEvent(target, &release);
+            return true;
+        });
         bridge.setPollInterval(200);
         QSignalSpy sent(&bridge, &CopilotBridge::sent);
         QSignalSpy failed(&bridge, &CopilotBridge::sendFailed);
@@ -94,7 +114,8 @@ private slots:
         page.setHtml(QStringLiteral("<html><body><p>Please sign in</p></body></html>"));
         QVERIFY(loaded.wait(10000));
 
-        CopilotBridge bridge(&page);
+        CopilotBridge bridge;
+        attachWebEnginePage(&bridge, &page);
         QSignalSpy failed(&bridge, &CopilotBridge::sendFailed);
         bridge.sendPrompt(QStringLiteral("hello"));
         QVERIFY(failed.wait(10000));

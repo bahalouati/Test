@@ -16,6 +16,8 @@
     lexical  - contenteditable that handles paste itself (like Lexical)
     plain    - contenteditable with no paste handler (insertText fallback)
     textarea - a React-style controlled textarea
+    strict   - like the real site: only a genuine Enter key sends (script-made
+               key events are ignored) and the send button has no label
   On send it shows a stop button while "streaming", then a reply holding one
   agent block that echoes the prompt length, plus an ordinary code block.
 -->
@@ -42,6 +44,12 @@
     }
   }
   input.className = 'editor';
+  if (mode === 'strict') {
+    var btn = document.getElementById('send');
+    btn.removeAttribute('aria-label');
+    btn.setAttribute('type', 'button');
+    btn.textContent = '\u27a4';
+  }
   composer.appendChild(input);
 
   function text() { return mode === 'textarea' ? input.value : input.innerText; }
@@ -99,6 +107,7 @@
   }
   document.getElementById('send').addEventListener('click', send);
   input.addEventListener('keydown', function (e) {
+    if (mode === 'strict' && !e.isTrusted) return;
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   });
 </script>

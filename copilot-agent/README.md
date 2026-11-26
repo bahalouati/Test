@@ -110,26 +110,30 @@ On other Windows setups and on macOS, install Qt with the online installer and t
 point CMake at it with `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2019_64`. On Windows, run
 `windeployqt` on the built exe.
 
-## Two ways to reach Copilot
+## Where Copilot runs (Settings → "Copilot runs in")
 
-**In-app browser** (the default on Qt 5.15 and newer): the app types into the Copilot page
-in its own window and reads the replies itself.
+**Microsoft Edge, automatic** (default): the app opens Copilot in an Edge window of its own,
+next to the app window. It types each message, presses Enter and reads the reply there, using
+Edge's remote-debugging (DevTools) interface. Sign in once in that window: it has its own
+profile, under the app's data folder, which keeps you signed in. Chrome is used if Edge isn't
+installed, and **Settings → Browser program** can point at a specific one.
+- If your organisation turns Edge remote debugging off (policy `RemoteDebuggingAllowed`), the
+  app says so and hands that step over by clipboard instead, so nothing is lost.
+- While that Edge window is open, its debugging port listens on 127.0.0.1 only, but other
+  programs on your PC could drive that window too. Close it when you're done.
 
-**Your own browser** (the default on Qt older than 5.15; switch it in **Settings**): Qt
-5.12's built-in browser is Chromium 69, which cannot run today's Microsoft 365 pages. It fails
-on JavaScript such as `?.` and `??`. In this mode the window shows only the agent panel:
+**My own browser, copy & paste**: works with any browser and any policy. Each message is
+copied to the clipboard for you to paste into Copilot. Copy the reply (Copilot's copy button
+keeps the code blocks) and press **Paste reply**.
 
-1. Each message for Copilot is copied to the clipboard. Paste it into Copilot in Edge or
-   Chrome and send it.
-2. When Copilot has answered, copy the reply. Its copy button keeps the code blocks; a plain
-   text selection works too. Then press **Paste reply**.
-3. The actions run with the same approvals as in the in-app browser. The results are copied
-   to the clipboard for you to paste back.
+**Built-in browser**: Qt's own WebEngine inside the app window. With Qt 5.12 this is Chromium
+69 (2018), and Microsoft 365 Copilot does not render or work properly in it: the layout is
+garbled and the Send button may be missing. It is kept for newer Qt 5 builds and testing.
 
 ## Using it
 
-1. Start the app and sign in to Microsoft 365 in the left pane, or in your own browser in
-   external mode. The in-app profile is persistent, so you only sign in once.
+1. Start the app and press **Open Copilot in Edge**. Sign in to Microsoft 365 in the Edge
+   window that opens; you only need to do this once.
 2. **Choose...** a project folder.
 3. Type a task and press **Start task**.
 4. Approve or reject what it proposes. While a task runs, type in the task box and press
@@ -172,7 +176,8 @@ devtools on the same page. To use Qt's built-in devtools, set
 ctest --test-dir build --output-on-failure
 ```
 
-The protocol, workspace sandbox, diff and agent-loop tests need no display. `tst_bridge` runs
+The protocol, workspace sandbox, diff and agent-loop tests need no display. `tst_edge` drives a real Edge or Chrome headless over DevTools (skipped when neither is
+installed; set `COPILOTAGENT_TEST_BROWSER` to choose one). `tst_bridge` runs
 the real `bridge.js` in headless Chromium against [`tests/mock_copilot.html`](tests/mock_copilot.html),
 using three kinds of input box (Lexical-style editor, plain `contenteditable`, React
 `textarea`). The mock stands in for the live Copilot page, which the tests do not reach.
@@ -184,7 +189,9 @@ src/agentprotocol.*    instructions sent to Copilot, ```agent parser, results fo
 src/agentcontroller.*  the loop: reply -> actions -> approval -> run -> results
 src/workspace.*        file actions, confined to the project folder
 src/commandrunner.*    async shell commands with a timeout
-src/copilotbridge.*    drives the page through bridge.js
+src/copilotbridge.*    drives the page through bridge.js (any transport)
+src/edgesession.*      Edge/Chrome over the DevTools protocol
+src/webenginetransport.*  Qt's built-in WebEngine
 src/bridge.js          injected into Copilot (isolated JS world)
 src/approvaldialog.*   the diff / command confirmation
 src/mainwindow.*       the window
