@@ -63,3 +63,35 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  windows-msvc2019-x86:
+    # Qt 5.12.2's 32-bit MSVC kit (built with 2017), compiled with the
+    # MSVC 2019 toolset (14.29) for x86.
+    name: Qt 5.12.2 MSVC 2019 32-bit (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: MSVC 2019 x86 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x86
+          toolset: "14.29"
+
+      - name: Install Qt 5.12.2 (win32_msvc2017)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "5.12.2"
+          host: windows
+          target: desktop
+          arch: win32_msvc2017
+          modules: qtwebengine
+
+      - name: Configure
+        run: cmake -S copilot-agent -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCOPILOTAGENT_QT_VERSION=5
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

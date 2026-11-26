@@ -36,6 +36,11 @@ if(QT_VERSION_MAJOR EQUAL 6 AND Qt6_VERSION VERSION_LESS 6.2)
 endif()
 message(STATUS "Building against Qt ${${QtX}_VERSION}")
 
+if(WIN32)
+    # Keep <windows.h>, if any header pulls it in, from defining min/max macros.
+    add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN)
+endif()
+
 if(MSVC)
     add_compile_options(/utf-8 /W4)
 else()
@@ -100,7 +105,10 @@ if(COPILOTAGENT_BUILD_TESTS)
     add_executable(tst_bridge tests/tst_bridge.cpp tests/mock.qrc)
     target_link_libraries(tst_bridge PRIVATE agentweb ${QtX}::Test ${QtX}::Widgets)
     add_test(NAME tst_bridge COMMAND tst_bridge)
-    set_tests_properties(tst_bridge PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu"
-        LABELS webengine)
+    if(WIN32)
+        set(_bridge_env "QTWEBENGINE_CHROMIUM_FLAGS=--disable-gpu")
+    else()
+        set(_bridge_env "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
+    endif()
+    set_tests_properties(tst_bridge PROPERTIES ENVIRONMENT "${_bridge_env}" LABELS webengine)
 endif()

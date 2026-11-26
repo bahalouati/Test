@@ -49,7 +49,27 @@ For Qt 5.12.2, point CMake at the kit, for example
 `-DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
 WebEngine 5.12 needs an MSVC kit (msvc2017_64); MinGW kits do not include it.
 
-On Windows and macOS, install Qt with the online installer and tick **Qt WebEngine**. Then
+### Windows, Qt 5.12.2, MSVC 2019, 32-bit
+
+Qt 5.12 has no "msvc2019" kit. Use **MSVC2017 32-bit** (`win32_msvc2017`), which MSVC 2019 links
+against fine because the two are binary-compatible. In the Qt installer, tick
+*Qt 5.12.2 → MSVC 2017 32-bit* and *Qt WebEngine*. Then, from an
+**x86 Native Tools Command Prompt for VS 2019**:
+
+```bat
+cmake -S copilot-agent -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+      -DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=C:\Qt\5.12.2\msvc2017
+cmake --build build
+ctest --test-dir build --output-on-failure
+C:\Qt\5.12.2\msvc2017\bin\windeployqt.exe --release build\copilot-agent.exe
+```
+
+(Or `-G "Visual Studio 16 2019" -A Win32` instead of Ninja, then add `--config Release` to
+the build and test commands.) `windeployqt` copies the Qt DLLs, `QtWebEngineProcess.exe` and
+the WebEngine resources next to the exe so it runs on other machines. That machine also needs
+the VC++ 2015-2019 x86 redistributable.
+
+On other Windows setups and on macOS, install Qt with the online installer and tick **Qt WebEngine**. Then
 point CMake at it with `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2019_64`. On Windows, run
 `windeployqt` on the built exe.
 
