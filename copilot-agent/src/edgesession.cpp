@@ -201,8 +201,16 @@ void EdgeSession::launch()
         args << m_startUrl.toString();
 
     emit status(tr("Starting %1...").arg(QFileInfo(exe).completeBaseName()));
+    // Detached, with its console output discarded: the browser outlives
+    // the app and must not hold on to (or spam) the app's own streams.
+    QProcess proc;
+    proc.setProgram(exe);
+    proc.setArguments(args);
+    proc.setStandardInputFile(QProcess::nullDevice());
+    proc.setStandardOutputFile(QProcess::nullDevice());
+    proc.setStandardErrorFile(QProcess::nullDevice());
     qint64 pid = 0;
-    if (!QProcess::startDetached(exe, args, QString(), &pid)) {
+    if (!proc.startDetached(&pid)) {
         fail(QStringLiteral("could not start %1").arg(exe));
         return;
     }
