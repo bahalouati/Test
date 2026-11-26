@@ -2,7 +2,10 @@
 
 #include "agentprotocol.h"
 
+#include <QDateTime>
 #include <QDir>
+#include <QSaveFile>
+#include <QStandardPaths>
 #include <QFileInfo>
 #include <QSysInfo>
 #include <QTimer>
@@ -49,6 +52,10 @@ void AgentController::setState(State s)
 
 void AgentController::send(QString text)
 {
+    if (!m_notes.isEmpty()) {
+        text = m_notes.join(QLatin1Char('\n')) + QStringLiteral("\n\n") + text;
+        m_notes.clear();
+    }
     m_lastPrompt = text;
     m_pending.clear();
     ++m_sendSerial;
@@ -69,6 +76,9 @@ void AgentController::startTask(const QString &task)
     stop();
     m_active = true;
     m_step = 0;
+    m_lastSignature.clear();
+    m_failStreak = 0;
+    m_notes.clear();
     emit log(LogKind::Info, tr("New task in %1").arg(QDir::toNativeSeparators(m_ws.root())));
     send(taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
                     CommandRunner::shellName()));
@@ -201,9 +211,21 @@ void AgentController::runNext()
     switch (a.type) {
     case AgentAction::ReadFile:      record(m_ws.readFile(a)); break;
     case AgentAction::ListDir:       record(m_ws.listDir(a)); break;
-    case AgentAction::WriteFile:     record(m_ws.writeFile(a)); break;
+    case AgentAction::WriteFile: {
+        const FileChange before = snapshot(a.path);
+        const ActionResult r = m_ws.writeFile(a);
+        if (r.ok)
+            remember(before);
+        record(r);
+        if (!r.ok)
+            skipRemaining(QStringLiteral("skipped: the write before it failed"));
+        break;
+    }
     case AgentAction::ReplaceInFile: {
+        const FileChange before = snapshot(a.path);
         const ActionResult r = m_ws.replaceInFile(a);
+        if (r.ok)
+            remember(before);
         record(r);
         if (!r.ok)
             skipRemaining(QStringLiteral("skipped: the edit before it failed"));
@@ -242,9 +264,37 @@ void AgentController::finishStep()
         return;
     }
 
-    m_pending = formatResults(m_results, m_step, m_opts.charLimit);
     if (m_results.isEmpty()) {
         setState(State::Idle);
+        return;
+    }
+
+    // Copilot can get stuck: the same step with the same results again, or
+    // step after step where nothing works. Tell it, and stop looping on our
+    // own so a person looks at the chat.
+    QString hold;
+    const QByteArray sig = stepSignature(m_results);
+    const bool repeated = !m_lastSignature.isEmpty() && sig == m_lastSignature;
+    m_lastSignature = sig;
+    const bool anyOk = std::any_of(m_results.cbegin(), m_results.cend(),
+                                   [](const ActionResult &r) { return r.ok; });
+    m_failStreak = anyOk ? 0 : m_failStreak + 1;
+    if (repeated) {
+        m_notes << QStringLiteral("(Note: that was exactly the same step as the previous one, with the same results. "
+                                  "Could you try a different approach?)");
+        hold = tr("Copilot repeated the previous step exactly. Auto-loop paused: check the chat, then press "
+                  "\"Send results\" or answer it with \"Send\".");
+    } else if (m_failStreak >= 3) {
+        m_notes << QStringLiteral("(Note: the last %1 steps all failed. Could you step back and check your assumptions?)")
+                       .arg(m_failStreak);
+        hold = tr("Nothing has worked for %1 steps in a row. Auto-loop paused: check the chat, then press "
+                  "\"Send results\" or answer it with \"Send\".").arg(m_failStreak);
+    }
+
+    m_pending = formatResults(m_results, m_step, m_opts.charLimit);
+    if (!hold.isEmpty()) {
+        emit log(LogKind::Error, hold);
+        setState(State::ResultsReady);
         return;
     }
     if (m_opts.autoLoop && m_step < m_opts.maxSteps) {
@@ -267,6 +317,83 @@ void AgentController::finishStep()
     if (m_opts.autoLoop)
         emit log(LogKind::Info, tr("Reached the limit of %1 steps. Press \"Send results\" to let it continue.").arg(m_opts.maxSteps));
     setState(State::ResultsReady);
+}
+
+AgentController::FileChange AgentController::snapshot(const QString &path) const
+{
+    FileChange c;
+    c.path = path;
+    QString err;
+    const QString abs = m_ws.resolve(path, &err);
+    QFile f(abs);
+    if (!abs.isEmpty() && QFileInfo(abs).isFile() && f.open(QIODevice::ReadOnly)) {
+        c.existed = true;
+        c.before = f.readAll();
+    }
+    return c;
+}
+
+void AgentController::remember(const FileChange &c)
+{
+    // A copy on disk too, so an app crash or close does not lose it.
+    if (m_backupDir.isEmpty())
+        m_backupDir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                    + QStringLiteral("/backups/")
+                    + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    if (c.existed) {
+        const QString dest = m_backupDir + QStringLiteral("/%1/").arg(m_undo.size() + 1) + c.path;
+        QDir().mkpath(QFileInfo(dest).absolutePath());
+        QFile f(dest);
+        if (f.open(QIODevice::WriteOnly))
+            f.write(c.before);
+    }
+    m_undo.append(c);
+    emit undoChanged();
+}
+
+QString AgentController::undoLabel() const
+{
+    if (m_undo.isEmpty())
+        return QString();
+    const FileChange &c = m_undo.last();
+    return c.existed ? tr("restore %1").arg(c.path) : tr("remove the new file %1").arg(c.path);
+}
+
+bool AgentController::undoLast(QString *message)
+{
+    if (!canUndo()) {
+        *message = tr("Nothing to undo.");
+        return false;
+    }
+    const FileChange c = m_undo.last();
+    QString err;
+    const QString abs = m_ws.resolve(c.path, &err);
+    if (abs.isEmpty()) {
+        *message = tr("Cannot undo %1: %2").arg(c.path, err);
+        return false;
+    }
+    if (c.existed) {
+        QSaveFile f(abs);
+        if (!f.open(QIODevice::WriteOnly) || f.write(c.before) != c.before.size() || !f.commit()) {
+            *message = tr("Cannot restore %1: %2").arg(c.path, f.errorString());
+            return false;
+        }
+        m_notes << QStringLiteral("(Note: I undid your last change to %1, so it is back to how it was before that change.)")
+                       .arg(c.path);
+        *message = tr("Restored %1.").arg(c.path);
+    } else {
+        if (QFileInfo::exists(abs) && !QFile::remove(abs)) {
+            *message = tr("Cannot remove %1.").arg(c.path);
+            return false;
+        }
+        m_notes << QStringLiteral("(Note: I removed the file %1 that you created.)").arg(c.path);
+        *message = tr("Removed %1.").arg(c.path);
+    }
+    m_undo.removeLast();
+    // The results waiting to be sent may describe the undone change; the
+    // note goes with them so Copilot sees both.
+    emit undoChanged();
+    return true;
 }
 
 void AgentController::stop()

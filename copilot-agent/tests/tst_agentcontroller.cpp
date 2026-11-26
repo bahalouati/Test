@@ -2,6 +2,7 @@
 
 #include <QFile>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -41,6 +42,11 @@ class TestAgentController : public QObject
     }
 
 private slots:
+    void initTestCase()
+    {
+        QStandardPaths::setTestModeEnabled(true);   // backups go to a test location
+    }
+
     void init()
     {
         QDir(m_dir.path()).removeRecursively();
@@ -175,6 +181,65 @@ private slots:
         QCOMPARE(sent.size(), 1);
     }
 
+    void repeatedStepPausesTheLoop()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        c->onReply({R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QCOMPARE(sent.size(), 2);                     // the repeat was not auto-sent
+        c->sendPendingResults();
+        QVERIFY(sent.last()[0].toString().contains("exactly the same step"));
+    }
+
+    void failingStreakPausesTheLoop()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        for (int i = 0; i < 3; ++i) {
+            c->onReply({QString(R"({"action":"read_file","path":"missing%1"})").arg(i)});
+            QVERIFY(QTest::qWaitFor([&] { return c->state() != State::RunningActions; }, 5000));
+        }
+        QCOMPARE(c->state(), State::ResultsReady);
+        QCOMPARE(sent.size(), 3);                     // task + 2 auto results, third held
+    }
+
+    void undoRestoresAndTellsCopilot()
+    {
+        QFile f(m_dir.path() + "/keep.txt");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("original\n");
+        f.close();
+
+        AgentController *c = make(Decision::Approve, /*autoLoop*/ false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"write_file","path":"keep.txt","content":"// ... rest unchanged
+"})",
+                    R"({"action":"write_file","path":"new/added.txt","content":"x"})"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QVERIFY(c->canUndo());
+        QVERIFY(c->undoLabel().contains("added.txt"));
+
+        QString msg;
+        QVERIFY(c->undoLast(&msg));                  // removes the new file
+        QVERIFY(!QFile::exists(m_dir.path() + "/new/added.txt"));
+        QVERIFY(c->undoLast(&msg));                  // restores the original
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), QByteArray("original\n"));
+        QVERIFY(!c->canUndo());
+        QVERIFY(QFile::exists(c->backupDir() + "/1/keep.txt"));
+
+        c->sendPendingResults();
+        const QString next = sent.last()[0].toString();
+        QVERIFY(next.contains("I removed the file new/added.txt"));
+        QVERIFY(next.contains("I undid your last change to keep.txt"));
+    }
+
     void manualModeHoldsResults()
     {
         AgentController *c = make(Decision::Approve, /*autoLoop*/ false);
@@ -223,11 +288,16 @@ private slots:
 
     void stepLimitStopsTheLoop()
     {
+        for (int i = 0; i < 5; ++i) {
+            QFile f(m_dir.path() + QString("/f%1.txt").arg(i));
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(QByteArray::number(i));
+        }
         AgentController *c = make(Decision::Approve);
         QSignalSpy sent(c, &AgentController::sendPrompt);
         c->startTask("t");
         for (int i = 0; i < 5; ++i) {
-            c->onReply({R"({"action":"list_dir"})"});
+            c->onReply({QString(R"({"action":"read_file","path":"f%1.txt"})").arg(i)});
             QVERIFY(QTest::qWaitFor([&] { return c->state() != State::RunningActions; }, 5000));
         }
         QCOMPARE(c->state(), State::ResultsReady);

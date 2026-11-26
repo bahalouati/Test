@@ -16,8 +16,11 @@ public:
     enum Outcome { Approved, Rejected, StopAgent };
 
     // preview: unified diff for file changes; ignored for commands.
+    // warnings: problems spotted in what Copilot proposed (placeholders that
+    // would delete code, risky commands); shown in red above everything else.
     ApprovalDialog(const AgentAction &action, const QString &preview,
-                   const QString &workspaceRoot, QWidget *parent = nullptr);
+                   const QString &workspaceRoot, const QStringList &warnings,
+                   QWidget *parent = nullptr);
 
     Outcome outcome() const { return m_outcome; }
     QString note() const;

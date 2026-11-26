@@ -44,7 +44,8 @@ protected:
 } // namespace
 
 ApprovalDialog::ApprovalDialog(const AgentAction &a, const QString &preview,
-                               const QString &workspaceRoot, QWidget *parent)
+                               const QString &workspaceRoot, const QStringList &warnings,
+                               QWidget *parent)
     : QDialog(parent)
 {
     setModal(true);
@@ -58,6 +59,19 @@ ApprovalDialog::ApprovalDialog(const AgentAction &a, const QString &preview,
     tf.setBold(true);
     title->setFont(tf);
     lay->addWidget(title);
+
+    if (!warnings.isEmpty()) {
+        QString html = QStringLiteral("<b>Copilot may have got this wrong:</b><ul style='margin:2px 0 0 -20px'>");
+        for (const QString &w : warnings)
+            html += QStringLiteral("<li>") + w.toHtmlEscaped() + QStringLiteral("</li>");
+        html += QStringLiteral("</ul>");
+        auto *warn = new QLabel(html, this);
+        warn->setWordWrap(true);
+        warn->setTextFormat(Qt::RichText);
+        warn->setStyleSheet(QStringLiteral(
+            "QLabel { background: #ffebe9; color: #82071e; border: 1px solid #ff8182; border-radius: 4px; padding: 6px; }"));
+        lay->addWidget(warn);
+    }
 
     const QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
 
@@ -104,16 +118,21 @@ ApprovalDialog::ApprovalDialog(const AgentAction &a, const QString &preview,
         a.type == AgentAction::RunCommand ? tr("Run") : tr("Apply"), QDialogButtonBox::AcceptRole);
     auto *rejectBtn = buttons->addButton(tr("Reject"), QDialogButtonBox::RejectRole);
     auto *stop = buttons->addButton(tr("Stop agent"), QDialogButtonBox::DestructiveRole);
-    approve->setDefault(true);
+    // With a warning, Enter must not apply it: make Reject the default.
+    approve->setDefault(warnings.isEmpty());
+    rejectBtn->setDefault(!warnings.isEmpty());
+    if (!warnings.isEmpty())
+        approve->setText(a.type == AgentAction::RunCommand ? tr("Run anyway") : tr("Apply anyway"));
     lay->addWidget(buttons);
 
     connect(approve, &QPushButton::clicked, this, [this] { m_outcome = Approved; accept(); });
     connect(rejectBtn, &QPushButton::clicked, this, [this] { m_outcome = Rejected; reject(); });
     connect(stop, &QPushButton::clicked, this, [this] { m_outcome = StopAgent; reject(); });
     // Typing a reason means you are rejecting; make that the Enter action.
-    connect(m_note, &QLineEdit::textChanged, this, [approve, rejectBtn](const QString &t) {
-        approve->setDefault(t.isEmpty());
-        rejectBtn->setDefault(!t.isEmpty());
+    const bool warned = !warnings.isEmpty();
+    connect(m_note, &QLineEdit::textChanged, this, [approve, rejectBtn, warned](const QString &t) {
+        approve->setDefault(t.isEmpty() && !warned);
+        rejectBtn->setDefault(!t.isEmpty() || warned);
     });
 }
 
