@@ -11,7 +11,7 @@ on:
       - ".github/workflows/copilot-agent.yml"
 
 jobs:
-  build:
+  qt6:
     name: Qt 6 + WebEngine
     runs-on: ubuntu-24.04
     steps:
@@ -23,12 +23,43 @@ jobs:
           sudo apt-get install -y qt6-base-dev qt6-webengine-dev cmake g++
 
       - name: Configure
-        run: cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release -DCOPILOTAGENT_QT_VERSION=6
 
       - name: Build
         run: cmake --build build -j"$(nproc)"
 
       # tst_bridge drives headless Chromium against a local mock page; it sets
       # its own offscreen/no-sandbox environment and needs no network.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+  qt5122:
+    # The oldest supported Qt, so nothing newer than 5.12 slips into the code.
+    name: Qt 5.12.2 + WebEngine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 5.12.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "5.12.2"
+          host: linux
+          target: desktop
+          arch: gcc_64
+          modules: qtwebengine
+
+      - name: Install Chromium runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 \
+            libxkbcommon0 libxkbfile1 libfontconfig1 libdbus-1-3 libgl1 libegl1 libasound2t64
+
+      - name: Configure
+        run: cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release -DCOPILOTAGENT_QT_VERSION=5
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
       - name: Test
         run: ctest --test-dir build --output-on-failure

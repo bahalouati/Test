@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 
+#include "agentprotocol.h"
 #include "approvaldialog.h"
 #include "copilotbridge.h"
 #include "linediff.h"
@@ -49,7 +50,13 @@ MainWindow::MainWindow(QWidget *parent)
     const QString lastFolder = QSettings().value(QStringLiteral("workspace")).toString();
     if (!lastFolder.isEmpty() && QDir(lastFolder).exists())
         setFolder(lastFolder);
-    m_view->load(QUrl(m_settings.url));
+    if (!m_settings.externalBrowser)
+        m_view->load(QUrl(m_settings.url));
+    else
+        appendLog(AgentController::LogKind::Info,
+                  tr("External-browser mode: open Copilot (%1) in your browser. Each message is copied "
+                     "to the clipboard for you to paste; copy Copilot's reply back and press \"Paste reply\". "
+                     "Change this in Settings.").arg(m_settings.url));
     updateButtons();
 
     QSettings q;
@@ -69,7 +76,7 @@ void MainWindow::buildUi()
     m_view->setPage(new WebPage(profile, m_view));
     m_bridge = new CopilotBridge(m_view->page(), this);
 
-    auto *tb = addToolBar(tr("Browser"));
+    auto *tb = m_browserBar = addToolBar(tr("Browser"));
     tb->setMovable(false);
     tb->addAction(m_view->pageAction(QWebEnginePage::Back));
     tb->addAction(m_view->pageAction(QWebEnginePage::Forward));
@@ -79,7 +86,10 @@ void MainWindow::buildUi()
     m_address = new QLineEdit(this);
     m_address->setReadOnly(true);
     tb->addWidget(m_address);
-    auto *settings = tb->addAction(tr("Settings"));
+    // Settings stay reachable when the browser toolbar is hidden.
+    auto *appBar = addToolBar(tr("App"));
+    appBar->setMovable(false);
+    auto *settings = appBar->addAction(tr("Settings"));
     connect(settings, &QAction::triggered, this, [this] {
         SettingsDialog d(m_settings, this);
         if (d.exec() != QDialog::Accepted)
@@ -89,7 +99,7 @@ void MainWindow::buildUi()
         m_settings.autoLoop = m_autoLoop->isChecked();
         m_settings.save();
         applySettings();
-        if (oldUrl != m_settings.url)
+        if (!m_settings.externalBrowser && (oldUrl != m_settings.url || m_view->url().isEmpty()))
             m_view->load(QUrl(m_settings.url));
     });
 
@@ -146,9 +156,12 @@ void MainWindow::buildUi()
     m_sendResults->setToolTip(tr("Send the results of the last step to Copilot"));
     m_readReply->setToolTip(tr("Parse Copilot's newest reply now instead of waiting"));
     m_copyPrompt->setToolTip(tr("Copy the message to the clipboard to paste it into Copilot yourself"));
+    m_pasteReply = new QPushButton(tr("Paste reply"), panel);
+    m_pasteReply->setToolTip(tr("Copy Copilot's reply in your browser, then press this to run its actions"));
     manual->addWidget(m_sendResults);
     manual->addWidget(m_readReply);
     manual->addWidget(m_copyPrompt);
+    manual->addWidget(m_pasteReply);
     pl->addLayout(manual);
 
     m_log = new QTextBrowser(panel);
@@ -212,7 +225,8 @@ void MainWindow::wire()
         applySettings();
     });
 
-    connect(m_agent, &AgentController::sendPrompt, m_bridge, &CopilotBridge::sendPrompt);
+    connect(m_pasteReply, &QPushButton::clicked, this, &MainWindow::pasteReply);
+    connect(m_agent, &AgentController::sendPrompt, this, &MainWindow::deliverPrompt);
     connect(m_agent, &AgentController::log, this, &MainWindow::appendLog);
     connect(m_agent, &AgentController::stateChanged, this, &MainWindow::updateButtons);
     connect(m_agent, &AgentController::taskFinished, this, [this](const QString &summary) {
@@ -245,6 +259,12 @@ void MainWindow::applySettings()
     o.commandTimeoutSec = m_settings.commandTimeoutSec;
     m_agent->setOptions(o);
     m_bridge->setSelectorOverrides(m_settings.selectors());
+    // In external-browser mode the built-in page is not used at all.
+    m_view->setVisible(!m_settings.externalBrowser);
+    m_browserBar->setVisible(!m_settings.externalBrowser);
+    m_readReply->setVisible(!m_settings.externalBrowser);
+    if (m_settings.externalBrowser)
+        m_bridge->cancel();
     m_bridge->setReplyTimeout(m_settings.replyTimeoutSec);
 
     const QSignalBlocker b1(m_autoLoop), b2(m_maxSteps);
@@ -298,6 +318,7 @@ void MainWindow::updateButtons()
     m_sendResults->setEnabled(s == S::ResultsReady && !m_agent->pendingResults().isEmpty());
     m_readReply->setEnabled(s != S::RunningActions);
     m_copyPrompt->setEnabled(!m_agent->lastPrompt().isEmpty());
+    m_pasteReply->setEnabled(s != S::RunningActions);
 
     switch (s) {
     case S::Idle:              m_status->setText(m_agent->taskActive() ? tr("Waiting for you") : tr("Idle")); break;
@@ -305,6 +326,36 @@ void MainWindow::updateButtons()
     case S::RunningActions:    m_status->setText(tr("Step %1: running actions").arg(m_agent->step())); break;
     case S::ResultsReady:      m_status->setText(tr("Results ready: press \"Send results\"")); break;
     }
+}
+
+void MainWindow::deliverPrompt(const QString &text)
+{
+    if (!m_settings.externalBrowser) {
+        m_bridge->sendPrompt(text);
+        return;
+    }
+    QApplication::clipboard()->setText(text);
+    QApplication::alert(this);
+    appendLog(AgentController::LogKind::Info,
+              tr("Copied %1 characters to the clipboard. Paste them into Copilot in your browser and send. "
+                 "When it has answered, copy the whole reply (its copy button keeps the code blocks) "
+                 "and press \"Paste reply\".").arg(text.size()));
+    m_status->setText(tr("Waiting for you to paste Copilot's reply"));
+}
+
+void MainWindow::pasteReply()
+{
+    const QString text = QApplication::clipboard()->text();
+    if (text.trimmed().isEmpty()) {
+        appendLog(AgentController::LogKind::Error, tr("The clipboard is empty. Copy Copilot's reply first."));
+        return;
+    }
+    if (text == m_agent->lastPrompt() || text == m_agent->pendingResults()) {
+        appendLog(AgentController::LogKind::Error,
+                  tr("The clipboard still holds the message for Copilot, not its reply. Copy the reply first."));
+        return;
+    }
+    m_agent->onReply(AgentProtocol::blocksFromReplyText(text));
 }
 
 AgentController::Decision MainWindow::approve(AgentAction &a, QString *note)

@@ -53,7 +53,7 @@ void CommandRunner::start(const QString &command, const QString &workingDir, int
     m_proc->setStandardInputFile(QProcess::nullDevice());
 
     connect(m_proc, &QProcess::readyRead, this, &CommandRunner::collect);
-    connect(m_proc, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
+    connect(m_proc, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int code, QProcess::ExitStatus status) {
         collect();
         m_timer.stop();
         if (m_done)

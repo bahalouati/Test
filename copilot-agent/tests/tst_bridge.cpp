@@ -3,7 +3,7 @@
 // that exactly the new agent block comes back.
 #include "copilotbridge.h"
 
-#include <QGuiApplication>
+#include <QApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -105,7 +105,7 @@ private slots:
 int main(int argc, char **argv)
 {
     QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
-    QGuiApplication app(argc, argv);
+    QApplication app(argc, argv);
     TestBridge t;
     return QTest::qExec(&t, argc, argv);
 }

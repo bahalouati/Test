@@ -1,6 +1,6 @@
 # Copilot Agent
 
-A Qt 6 desktop app that turns **Microsoft 365 Copilot Chat** into a coding agent.
+A Qt desktop app (Qt 5.12+ or Qt 6.2+) that turns **Microsoft 365 Copilot Chat** into a coding agent.
 
 The left side of the window is the real Copilot page in Qt WebEngine. You sign in with your
 work account, so your organisation's enterprise data protection applies. The right side is the
@@ -32,7 +32,9 @@ outside the folder are refused before anything is touched.
 
 ## Build
 
-You need Qt 6.2 or newer with the WebEngine module, and CMake 3.16 or newer.
+You need Qt **5.12 or newer** or Qt **6.2 or newer**, with the WebEngine module, and CMake 3.16
+or newer. When both majors are installed, CMake picks Qt 6; add `-DCOPILOTAGENT_QT_VERSION=5`
+to use Qt 5.
 
 ```bash
 # Ubuntu/Debian
@@ -43,14 +45,34 @@ cmake --build build -j
 ./build/copilot-agent
 ```
 
+For Qt 5.12.2, point CMake at the kit, for example
+`-DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
+WebEngine 5.12 needs an MSVC kit (msvc2017_64); MinGW kits do not include it.
+
 On Windows and macOS, install Qt with the online installer and tick **Qt WebEngine**. Then
 point CMake at it with `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2019_64`. On Windows, run
 `windeployqt` on the built exe.
 
+## Two ways to reach Copilot
+
+**In-app browser** (the default on Qt 5.15 and newer): the app types into the Copilot page
+in its own window and reads the replies itself.
+
+**Your own browser** (the default on Qt older than 5.15; switch it in **Settings**): Qt
+5.12's built-in browser is Chromium 69, which cannot run today's Microsoft 365 pages. It fails
+on JavaScript such as `?.` and `??`. In this mode the window shows only the agent panel:
+
+1. Each message for Copilot is copied to the clipboard. Paste it into Copilot in Edge or
+   Chrome and send it.
+2. When Copilot has answered, copy the reply. Its copy button keeps the code blocks; a plain
+   text selection works too. Then press **Paste reply**.
+3. The actions run with the same approvals as in the in-app browser. The results are copied
+   to the clipboard for you to paste back.
+
 ## Using it
 
-1. Start the app and sign in to Microsoft 365 in the left pane. The profile is persistent,
-   so you only sign in once.
+1. Start the app and sign in to Microsoft 365 in the left pane, or in your own browser in
+   external mode. The in-app profile is persistent, so you only sign in once.
 2. **Choose...** a project folder.
 3. Type a task and press **Start task**.
 4. Approve or reject what it proposes. While a task runs, type in the task box and press
