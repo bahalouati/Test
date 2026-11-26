@@ -1,0 +1,106 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Mock Copilot</title>
+<style>
+  body { font-family: sans-serif; margin: 0; }
+  #chat { padding: 8px; min-height: 200px; }
+  .editor { white-space: pre-wrap; border: 1px solid #888; min-height: 40px; padding: 4px; width: 600px; }
+  textarea.editor { height: 60px; }
+</style>
+</head>
+<body>
+<!--
+  Stands in for the Copilot chat page in tests. ?mode= picks the input box:
+    lexical  - contenteditable that handles paste itself (like Lexical)
+    plain    - contenteditable with no paste handler (insertText fallback)
+    textarea - a React-style controlled textarea
+  On send it shows a stop button while "streaming", then a reply holding one
+  agent block that echoes the prompt length, plus an ordinary code block.
+-->
+<div id="chat" role="log"></div>
+<div id="composer"></div>
+<button id="send" aria-label="Send">Send</button>
+<script>
+  var mode = new URLSearchParams(location.search).get('mode') || 'lexical';
+  var composer = document.getElementById('composer');
+  var input;
+  if (mode === 'textarea') {
+    input = document.createElement('textarea');
+    input.setAttribute('aria-label', 'Message Copilot');
+  } else {
+    input = document.createElement('div');
+    input.setAttribute('contenteditable', 'true');
+    input.setAttribute('role', 'textbox');
+    if (mode === 'lexical') {
+      input.setAttribute('data-lexical-editor', 'true');
+      input.addEventListener('paste', function (e) {
+        e.preventDefault();
+        input.textContent = e.clipboardData.getData('text/plain');
+      });
+    }
+  }
+  input.className = 'editor';
+  composer.appendChild(input);
+
+  function text() { return mode === 'textarea' ? input.value : input.innerText; }
+  function clear() { if (mode === 'textarea') input.value = ''; else input.textContent = ''; }
+
+  var replies = 0;
+  window.mockSent = [];
+  function send() {
+    var t = text();
+    if (!t.trim()) return;
+    window.mockSent.push(t);
+    clear();
+    var chat = document.getElementById('chat');
+    var mine = document.createElement('div');
+    mine.className = 'user';
+    mine.textContent = t;
+    chat.appendChild(mine);
+
+    var stop = document.createElement('button');
+    stop.setAttribute('aria-label', 'Stop responding');
+    stop.textContent = 'Stop';
+    document.body.appendChild(stop);
+
+    var reply = document.createElement('div');
+    reply.className = 'assistant';
+    chat.appendChild(reply);
+    var n = ++replies;
+    var words = ['Sure', ' -', ' let', ' me', ' look', '.'];
+    var i = 0;
+    var timer = setInterval(function () {
+      if (i < words.length) { reply.textContent += words[i++]; return; }
+      clearInterval(timer);
+      var label = document.createElement('div');
+      label.textContent = 'agent';
+      reply.appendChild(label);
+      var pre = document.createElement('pre');
+      var code = document.createElement('code');
+      // Tests key the reply off markers in the prompt; the default is a
+      // harmless list_dir that echoes the prompt length.
+      var action = { action: 'list_dir', path: 'reply-' + n + '-len-' + t.length };
+      if (t.indexOf('MOCK_WRITE') >= 0)
+        action = { action: 'write_file', path: 'README.md', content: '# Demo\n\nA tiny C++ program.\n' };
+      else if (t.indexOf('MOCK_RUN') >= 0)
+        action = { action: 'run_command', command: 'ls -la src' };
+      else if (t.indexOf('write_file README.md') >= 0)
+        action = { action: 'done', summary: 'README added' };
+      code.textContent = JSON.stringify(action);
+      pre.appendChild(code);
+      reply.appendChild(pre);
+      var other = document.createElement('pre');
+      other.textContent = 'int main() { return 0; }';
+      reply.appendChild(other);
+      stop.remove();
+    }, 150);
+  }
+  document.getElementById('send').addEventListener('click', send);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+</script>
+</body>
+</html>

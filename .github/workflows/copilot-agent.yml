@@ -1,0 +1,34 @@
+name: copilot-agent
+
+on:
+  push:
+    paths:
+      - "copilot-agent/**"
+      - ".github/workflows/copilot-agent.yml"
+  pull_request:
+    paths:
+      - "copilot-agent/**"
+      - ".github/workflows/copilot-agent.yml"
+
+jobs:
+  build:
+    name: Qt 6 + WebEngine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt 6 WebEngine
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-webengine-dev cmake g++
+
+      - name: Configure
+        run: cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      # tst_bridge drives headless Chromium against a local mock page; it sets
+      # its own offscreen/no-sandbox environment and needs no network.
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
