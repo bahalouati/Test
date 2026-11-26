@@ -257,6 +257,7 @@ void MainWindow::applySettings()
     o.maxSteps = m_settings.maxSteps;
     o.charLimit = m_settings.charLimit;
     o.commandTimeoutSec = m_settings.commandTimeoutSec;
+    o.autoSendDelaySec = m_settings.autoSendDelaySec;
     m_agent->setOptions(o);
     m_bridge->setSelectorOverrides(m_settings.selectors());
     // In external-browser mode the built-in page is not used at all.

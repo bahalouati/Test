@@ -23,6 +23,7 @@ class TestAgentController : public QObject
         o.autoLoop = autoLoop;
         o.maxSteps = 5;
         o.commandTimeoutSec = 10;
+        o.autoSendDelaySec = 0;
         c->setOptions(o);
         m_asked.clear();
         c->setApprover([this, answer](AgentAction &a, QString *note) {
@@ -139,6 +140,39 @@ private slots:
         QVERIFY(waitFor(c, State::WaitingForCopilot, 8000));
         QVERIFY(sent.last()[0].toString().contains("timeout"));
 #endif
+    }
+
+    void autoSendWaitsBeforeReplying()
+    {
+        AgentController *c = make(Decision::Approve);
+        AgentController::Options o = c->options();
+        o.autoSendDelaySec = 1;
+        c->setOptions(o);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QElapsedTimer t;
+        t.start();
+        c->onReply({R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QCOMPARE(sent.size(), 1);                    // held back for now
+        QVERIFY(waitFor(c, State::WaitingForCopilot, 5000));
+        QVERIFY(t.elapsed() >= 900);
+        QCOMPARE(sent.size(), 2);
+    }
+
+    void stopCancelsTheDelayedSend()
+    {
+        AgentController *c = make(Decision::Approve);
+        AgentController::Options o = c->options();
+        o.autoSendDelaySec = 1;
+        c->setOptions(o);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({R"({"action":"list_dir"})"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        c->stop();
+        QTest::qWait(1500);
+        QCOMPARE(sent.size(), 1);
     }
 
     void manualModeHoldsResults()

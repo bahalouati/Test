@@ -51,6 +51,7 @@ void AgentController::send(QString text)
 {
     m_lastPrompt = text;
     m_pending.clear();
+    ++m_sendSerial;
     setState(State::WaitingForCopilot);
     emit sendPrompt(text);
 }
@@ -115,6 +116,7 @@ void AgentController::onReply(const QStringList &codeBlocks)
     if (!m_active)
         m_active = true;
 
+    m_sinceReply.start();
     ++m_step;
     m_results.clear();
     m_queue.clear();
@@ -246,7 +248,20 @@ void AgentController::finishStep()
         return;
     }
     if (m_opts.autoLoop && m_step < m_opts.maxSteps) {
-        send(m_pending);
+        const qint64 wait = qint64(m_opts.autoSendDelaySec) * 1000
+                          - (m_sinceReply.isValid() ? m_sinceReply.elapsed() : 0);
+        if (wait <= 0) {
+            send(m_pending);
+            return;
+        }
+        // Wait in ResultsReady: "Send results" still sends at once, Stop or
+        // a new task cancels.
+        setState(State::ResultsReady);
+        const quint64 serial = m_sendSerial;
+        QTimer::singleShot(int(wait), this, [this, serial] {
+            if (m_state == State::ResultsReady && m_active && serial == m_sendSerial && !m_pending.isEmpty())
+                send(m_pending);
+        });
         return;
     }
     if (m_opts.autoLoop)
@@ -256,6 +271,7 @@ void AgentController::finishStep()
 
 void AgentController::stop()
 {
+    ++m_sendSerial;
     m_queue.clear();
     m_runner.kill();
     m_active = false;

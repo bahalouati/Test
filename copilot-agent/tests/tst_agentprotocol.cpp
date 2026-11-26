@@ -135,7 +135,7 @@ private slots:
         QVERIFY2(msg.size() < 13000, qPrintable(QString::number(msg.size())));
         QVERIFY(msg.contains("step 4"));
         QVERIFY(msg.contains("read_file f2 -> ok"));
-        QVERIFY(msg.contains("done action"));
+        QVERIFY(msg.contains("done step"));
     }
 
     void promptHasNoFencedExamples()
@@ -146,6 +146,10 @@ private slots:
         QVERIFY(!p.contains("```"));
         QVERIFY(p.contains("do it"));
         QVERIFY(p.contains("/bin/bash"));
+        // Reads as a request, not an override: none of the phrasing that
+        // chat filters associate with prompt injection.
+        for (const char *w : {"You are", "RULES", "Never", "ignore", "IMPORTANT", "must"})
+            QVERIFY2(!p.contains(QLatin1String(w)), w);
     }
 };
 

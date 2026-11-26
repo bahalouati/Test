@@ -34,6 +34,7 @@ AppSettings AppSettings::load()
     s.commandTimeoutSec = q.value(QStringLiteral("commandTimeoutSec"), s.commandTimeoutSec).toInt();
     s.replyTimeoutSec = q.value(QStringLiteral("replyTimeoutSec"), s.replyTimeoutSec).toInt();
     s.selectorsJson = q.value(QStringLiteral("selectorsJson")).toString();
+    s.autoSendDelaySec = q.value(QStringLiteral("autoSendDelaySec"), s.autoSendDelaySec).toInt();
     return s;
 }
 
@@ -48,6 +49,7 @@ void AppSettings::save() const
     q.setValue(QStringLiteral("commandTimeoutSec"), commandTimeoutSec);
     q.setValue(QStringLiteral("replyTimeoutSec"), replyTimeoutSec);
     q.setValue(QStringLiteral("selectorsJson"), selectorsJson);
+    q.setValue(QStringLiteral("autoSendDelaySec"), autoSendDelaySec);
 }
 
 QJsonObject AppSettings::selectors() const
@@ -90,6 +92,10 @@ SettingsDialog::SettingsDialog(const AppSettings &s, QWidget *parent)
 
     m_maxSteps = spin(1, 500, s.maxSteps, tr(" steps"), this);
     form->addRow(tr("Auto-loop limit:"), m_maxSteps);
+    m_autoDelay = spin(0, 300, s.autoSendDelaySec, tr(" s"), this);
+    m_autoDelay->setToolTip(tr("How long to wait after Copilot's reply before sending the results "
+                               "automatically. A human pace avoids rate limits."));
+    form->addRow(tr("Pause before auto-send:"), m_autoDelay);
     m_charLimit = spin(1000, 200000, s.charLimit, tr(" chars"), this);
     m_charLimit->setSingleStep(1000);
     form->addRow(tr("Max message size:"), m_charLimit);
@@ -139,6 +145,7 @@ AppSettings SettingsDialog::settings() const
     s.charLimit = m_charLimit->value();
     s.commandTimeoutSec = m_cmdTimeout->value();
     s.replyTimeoutSec = m_replyTimeout->value();
+    s.autoSendDelaySec = m_autoDelay->value();
     s.selectorsJson = m_selectors->toPlainText().trimmed();
     return s;
 }

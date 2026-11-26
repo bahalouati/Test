@@ -12,6 +12,20 @@ agent panel. You pick a project folder and describe a task. The app then:
    command shows a dialog first** (a diff for writes, an editable command line for commands),
 4. pastes the results back into the chat, and repeats until Copilot sends `done`.
 
+## What it can and cannot do
+
+- It **cannot** take screenshots, see your screen, or move the mouse or type into other programs.
+- Without asking, it can only **read and list files inside the project folder** you choose.
+- **Writing a file or running a command always needs your approval.** An approved command runs
+  with your own user's permissions, which is why the dialog shows the exact command and lets
+  you edit or reject it.
+- It talks to Copilot only through the chat, like you would. The first message is a plain,
+  polite request with no "system prompt" style instructions. It asks Copilot to keep
+  commands simple and safe: build, test and inspect, but no deleting, no admin rights, and
+  nothing interactive or long-running. With auto-loop on, it waits a few seconds after each
+  reply before sending results (**Pause before auto-send** in Settings, default 5 s), so it
+  keeps a human pace.
+
 ## Actions
 
 | Action            | Asks you first | What it does                                          |
