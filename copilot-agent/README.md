@@ -1,6 +1,6 @@
 # Copilot Agent
 
-A Qt desktop app (Qt 5.12+ or Qt 6.2+) that turns **Microsoft 365 Copilot Chat** into a coding agent.
+A Qt 5 desktop app (Qt 5.12 or newer, developed against 5.12.2) that turns **Microsoft 365 Copilot Chat** into a coding agent.
 
 The left side of the window is the real Copilot page in Qt WebEngine. You sign in with your
 work account, so your organisation's enterprise data protection applies. The right side is the
@@ -32,13 +32,12 @@ outside the folder are refused before anything is touched.
 
 ## Build
 
-You need Qt **5.12 or newer** or Qt **6.2 or newer**, with the WebEngine module, and CMake 3.16
-or newer. When both majors are installed, CMake picks Qt 6; add `-DCOPILOTAGENT_QT_VERSION=5`
-to use Qt 5.
+You need **Qt 5.12 or newer** (Qt 5 only; Qt 6 is not supported) with the WebEngine module,
+and CMake 3.16 or newer. No Python is needed: CI only uses it to download Qt.
 
 ```bash
 # Ubuntu/Debian
-sudo apt install qt6-base-dev qt6-webengine-dev cmake g++
+sudo apt install qtbase5-dev qtwebengine5-dev cmake g++   # distro Qt 5.15
 
 cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
@@ -46,7 +45,7 @@ cmake --build build -j
 ```
 
 For Qt 5.12.2, point CMake at the kit, for example
-`-DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
+`-DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
 WebEngine 5.12 needs an MSVC kit (msvc2017_64); MinGW kits do not include it.
 
 ### Windows, Qt 5.12.2, MSVC 2019, 32-bit
@@ -58,7 +57,7 @@ against fine because the two are binary-compatible. In the Qt installer, tick
 
 ```bat
 cmake -S copilot-agent -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
-      -DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=C:\Qt\5.12.2\msvc2017
+      -DCMAKE_PREFIX_PATH=C:\Qt\5.12.2\msvc2017
 cmake --build build
 ctest --test-dir build --output-on-failure
 C:\Qt\5.12.2\msvc2017\bin\windeployqt.exe --release build\copilot-agent.exe
