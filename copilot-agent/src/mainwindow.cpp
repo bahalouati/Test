@@ -4,6 +4,8 @@
 #include "approvaldialog.h"
 #include "copilotbridge.h"
 #include "linediff.h"
+#include "edgesession.h"
+#include "webenginetransport.h"
 #include "webpage.h"
 
 #include <QAction>
@@ -15,6 +17,7 @@
 #include <QFileDialog>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -22,10 +25,12 @@
 #include <QPushButton>
 #include <QScreen>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QTextBrowser>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWebEngineProfile>
@@ -35,10 +40,6 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setWindowTitle(tr("Copilot Agent"));
-    if (const QScreen *scr = QGuiApplication::primaryScreen()) {
-        const QSize avail = scr->availableSize();
-        resize(qMin(1500, avail.width() * 9 / 10), qMin(950, avail.height() * 9 / 10));
-    }
     m_settings = AppSettings::load();
     m_agent = new AgentController(this);
     m_agent->setApprover([this](AgentAction &a, QString *note) { return approve(a, note); });
@@ -50,22 +51,49 @@ MainWindow::MainWindow(QWidget *parent)
     const QString lastFolder = QSettings().value(QStringLiteral("workspace")).toString();
     if (!lastFolder.isEmpty() && QDir(lastFolder).exists())
         setFolder(lastFolder);
-    if (!m_settings.externalBrowser)
+    if (isMode("builtin")) {
         m_view->load(QUrl(m_settings.url));
-    else
+    } else if (isMode("edge")) {
         appendLog(AgentController::LogKind::Info,
-                  tr("External-browser mode: open Copilot (%1) in your browser. Each message is copied "
-                     "to the clipboard for you to paste; copy Copilot's reply back and press \"Paste reply\". "
-                     "Change this in Settings.").arg(m_settings.url));
+                  tr("Copilot runs in Microsoft Edge. Press \"Open Copilot in Edge\" to sign in first, "
+                     "or just start a task: Edge opens by itself."));
+    } else {
+        appendLog(AgentController::LogKind::Info,
+                  tr("Copy & paste mode: open Copilot (%1) in your browser. Each message is copied "
+                     "to the clipboard for you to paste; copy Copilot's reply back and press \"Paste reply\".")
+                      .arg(m_settings.url));
+    }
     updateButtons();
-
-    QSettings q;
-    restoreGeometry(q.value(QStringLiteral("geometry")).toByteArray());
 }
 
 MainWindow::~MainWindow()
 {
-    QSettings().setValue(QStringLiteral("geometry"), saveGeometry());
+    saveGeometryForMode();
+}
+
+void MainWindow::saveGeometryForMode()
+{
+    if (!m_geometryMode.isEmpty())
+        QSettings().setValue(QStringLiteral("geometry/") + m_geometryMode, saveGeometry());
+}
+
+void MainWindow::restoreGeometryForMode()
+{
+    if (m_geometryMode == m_settings.mode)
+        return;
+    saveGeometryForMode();
+    m_geometryMode = m_settings.mode;
+    const QByteArray g = QSettings().value(QStringLiteral("geometry/") + m_geometryMode).toByteArray();
+    if (!g.isEmpty() && restoreGeometry(g))
+        return;
+    // First time in this mode: the panel alone is compact; with the built-in
+    // page it shares a wide window.
+    const QSize avail = QGuiApplication::primaryScreen() ? QGuiApplication::primaryScreen()->availableSize()
+                                                         : QSize(1280, 800);
+    if (isMode("builtin"))
+        resize(qMin(1500, avail.width() * 9 / 10), qMin(950, avail.height() * 9 / 10));
+    else
+        resize(qMin(720, avail.width() * 9 / 10), qMin(860, avail.height() * 9 / 10));
 }
 
 void MainWindow::buildUi()
@@ -74,7 +102,28 @@ void MainWindow::buildUi()
     QWebEngineProfile *profile = WebPage::createProfile(this);
     m_view = new QWebEngineView(this);
     m_view->setPage(new WebPage(profile, m_view));
-    m_bridge = new CopilotBridge(m_view->page(), this);
+    m_bridge = new CopilotBridge(this);
+    m_edge = new EdgeSession(this);
+    m_edge->setProfileDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                          + QStringLiteral("/edge-profile"));
+    // Set up for the built-in page; useTransportForMode() switches to Edge.
+    attachWebEnginePage(m_bridge, m_view->page());
+    // A real Enter through the widget that hosts the page: Chromium treats
+    // it like the user's own key press, unlike a script-made key event.
+    m_bridge->setKeyPresser([this] {
+        if (isMode("edge")) {
+            m_edge->pressEnter();
+            return true;
+        }
+        QWidget *target = m_view->focusProxy() ? m_view->focusProxy() : m_view;
+        m_view->setFocus();
+        target->setFocus();
+        QKeyEvent press(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        QKeyEvent release(QEvent::KeyRelease, Qt::Key_Return, Qt::NoModifier, QStringLiteral("\r"));
+        QCoreApplication::sendEvent(target, &press);
+        QCoreApplication::sendEvent(target, &release);
+        return true;
+    });
 
     auto *tb = m_browserBar = addToolBar(tr("Browser"));
     tb->setMovable(false);
@@ -89,6 +138,13 @@ void MainWindow::buildUi()
     // Settings stay reachable when the browser toolbar is hidden.
     auto *appBar = addToolBar(tr("App"));
     appBar->setMovable(false);
+    m_openEdge = appBar->addAction(tr("Open Copilot in Edge"));
+    m_openEdge->setToolTip(tr("Opens Copilot in the app's Edge window, e.g. to sign in before starting"));
+    connect(m_openEdge, &QAction::triggered, this, [this] {
+        m_edge->setStartUrl(m_settings.url);
+        m_edge->setBrowserPath(m_settings.browserPath);
+        m_edge->start();
+    });
     auto *settings = appBar->addAction(tr("Settings"));
     connect(settings, &QAction::triggered, this, [this] {
         SettingsDialog d(m_settings, this);
@@ -99,7 +155,7 @@ void MainWindow::buildUi()
         m_settings.autoLoop = m_autoLoop->isChecked();
         m_settings.save();
         applySettings();
-        if (!m_settings.externalBrowser && (oldUrl != m_settings.url || m_view->url().isEmpty()))
+        if (isMode("builtin") && (oldUrl != m_settings.url || m_view->url().isEmpty()))
             m_view->load(QUrl(m_settings.url));
     });
 
@@ -176,7 +232,7 @@ void MainWindow::buildUi()
     split->addWidget(panel);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
-    split->setSizes({width() * 3 / 5, width() * 2 / 5});
+    m_split = split;
     panel->setMinimumWidth(360);
     setCentralWidget(split);
 
@@ -254,6 +310,47 @@ void MainWindow::wire()
         appendLog(AgentController::LogKind::Info, tr("Sent to Copilot, waiting for the reply..."));
     });
     connect(m_bridge, &CopilotBridge::sendFailed, m_agent, &AgentController::onSendFailed);
+
+    connect(m_edge, &EdgeSession::status, this, [this](const QString &msg) { m_status->setText(msg); });
+    connect(m_edge, &EdgeSession::connected, this, [this] {
+        appendLog(AgentController::LogKind::Info,
+                  tr("Connected to Copilot in Edge. If it asks you to sign in, do that in the Edge window."));
+        if (m_edgeFellBack) {
+            m_edgeFellBack = false;
+            m_pasteReply->setVisible(false);
+        }
+        if (!m_queuedPrompt.isEmpty()) {
+            const QString text = m_queuedPrompt;
+            m_queuedPrompt.clear();
+            // Give a freshly opened page a moment to finish loading.
+            QTimer::singleShot(3000, this, [this, text] { m_bridge->sendPrompt(text); });
+        }
+    });
+    connect(m_edge, &EdgeSession::failed, this, [this](const QString &why) {
+        appendLog(AgentController::LogKind::Error, tr("Could not use Edge: %1.").arg(why));
+        if (!m_queuedPrompt.isEmpty()) {
+            // Do not lose the step: hand it over by clipboard this once.
+            m_edgeFellBack = true;
+            m_pasteReply->setVisible(true);
+            const QString text = m_queuedPrompt;
+            m_queuedPrompt.clear();
+            deliverByClipboard(text);
+        }
+    });
+    connect(m_edge, &EdgeSession::disconnected, this, [this] {
+        m_bridge->cancel();
+        appendLog(AgentController::LogKind::Info,
+                  tr("The Edge window was closed. It opens again with the next message."));
+        updateButtons();
+    });
+    connect(m_bridge, &CopilotBridge::manualSendNeeded, this, [this] {
+        QApplication::alert(this);
+        appendLog(AgentController::LogKind::Error,
+                  tr("The message is typed into Copilot but could not be sent automatically. "
+                     "Click into the Copilot box and press Enter (or its Send button); "
+                     "the app keeps watching and continues once Copilot answers."));
+        m_status->setText(tr("Press Enter in the Copilot box to send"));
+    });
     connect(m_bridge, &CopilotBridge::replyReady, m_agent, &AgentController::onReply);
     connect(m_bridge, &CopilotBridge::waiting, this, [this](int s) {
         m_status->setText(tr("Waiting for Copilot... %1 s").arg(s));
@@ -275,12 +372,25 @@ void MainWindow::applySettings()
     o.autoSendDelaySec = m_settings.autoSendDelaySec;
     m_agent->setOptions(o);
     m_bridge->setSelectorOverrides(m_settings.selectors());
-    // In external-browser mode the built-in page is not used at all.
-    m_view->setVisible(!m_settings.externalBrowser);
-    m_browserBar->setVisible(!m_settings.externalBrowser);
-    m_readReply->setVisible(!m_settings.externalBrowser);
-    if (m_settings.externalBrowser)
-        m_bridge->cancel();
+    // Only the built-in mode shows a page here; in the others the window is
+    // just the agent panel and Copilot lives in a browser window of its own.
+    const bool builtin = isMode("builtin");
+    m_view->setVisible(builtin);
+    m_browserBar->setVisible(builtin);
+    m_openEdge->setVisible(isMode("edge"));
+    m_readReply->setVisible(!isMode("clipboard"));
+    m_pasteReply->setVisible(isMode("clipboard") || m_edgeFellBack);
+    m_edge->setStartUrl(m_settings.url);
+    m_edge->setBrowserPath(m_settings.browserPath);
+    useTransportForMode();
+    restoreGeometryForMode();
+    if (builtin) {
+        // Give the page most of the width once the window has its real size.
+        QTimer::singleShot(0, this, [this] {
+            const int w = m_split->width();
+            m_split->setSizes({w - qMax(420, w * 2 / 5), qMax(420, w * 2 / 5)});
+        });
+    }
     m_bridge->setReplyTimeout(m_settings.replyTimeoutSec);
 
     const QSignalBlocker b1(m_autoLoop), b2(m_maxSteps);
@@ -347,12 +457,45 @@ void MainWindow::updateButtons()
     }
 }
 
+void MainWindow::useTransportForMode()
+{
+    m_bridge->cancel();
+    if (isMode("edge")) {
+        m_bridge->setScriptRunner([this](const QString &script, std::function<void(const QVariant &)> done) {
+            m_edge->evaluate(script, done);
+        });
+        m_bridge->setTextInserter([this](const QString &text, std::function<void(bool)> done) {
+            m_edge->insertText(text, done);
+        });
+    } else {
+        attachWebEnginePage(m_bridge, m_view->page());
+        m_bridge->setTextInserter(nullptr);
+    }
+}
+
 void MainWindow::deliverPrompt(const QString &text)
 {
-    if (!m_settings.externalBrowser) {
+    if (isMode("builtin")) {
         m_bridge->sendPrompt(text);
         return;
     }
+    if (isMode("clipboard")) {
+        deliverByClipboard(text);
+        return;
+    }
+    if (m_edge->isConnected()) {
+        m_edge->wake();
+        m_bridge->sendPrompt(text);
+        return;
+    }
+    // Connect first (launching Edge if needed); the prompt goes out then.
+    m_queuedPrompt = text;
+    m_status->setText(tr("Opening Copilot in Edge..."));
+    m_edge->start();
+}
+
+void MainWindow::deliverByClipboard(const QString &text)
+{
     QApplication::clipboard()->setText(text);
     QApplication::alert(this);
     appendLog(AgentController::LogKind::Info,

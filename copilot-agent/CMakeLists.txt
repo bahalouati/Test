@@ -15,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # Qt 5 only, 5.12 or newer (developed against 5.12.2).
-find_package(Qt5 5.12 REQUIRED COMPONENTS Core Gui Widgets WebEngineCore WebEngineWidgets)
+find_package(Qt5 5.12 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets WebEngineCore WebEngineWidgets)
 message(STATUS "Building against Qt ${Qt5_VERSION}")
 
 if(WIN32)
@@ -45,18 +45,25 @@ add_library(agentcore STATIC
     src/linediff.h           src/linediff.cpp
     src/commandrunner.h      src/commandrunner.cpp
     src/agentcontroller.h    src/agentcontroller.cpp
+    src/copilotbridge.h      src/copilotbridge.cpp
+    src/bridge.qrc
 )
 target_include_directories(agentcore PUBLIC src)
 target_link_libraries(agentcore PUBLIC Qt5::Core)
 
-# The WebEngine side: the JS bridge that types into Copilot and reads replies.
-# In Qt 5, QWebEnginePage and QWebEngineProfile live in WebEngineWidgets.
+# Transports for the bridge: Qt's built-in WebEngine, and the user's own
+# Edge/Chrome over the DevTools protocol. In Qt 5, QWebEnginePage and
+# QWebEngineProfile live in WebEngineWidgets.
 add_library(agentweb STATIC
-    src/copilotbridge.h      src/copilotbridge.cpp
-    src/bridge.qrc
+    src/webenginetransport.h src/webenginetransport.cpp
 )
-target_include_directories(agentweb PUBLIC src)
-target_link_libraries(agentweb PUBLIC Qt5::Core Qt5::WebEngineCore Qt5::WebEngineWidgets)
+target_link_libraries(agentweb PUBLIC agentcore Qt5::WebEngineCore Qt5::WebEngineWidgets)
+
+add_library(agentedge STATIC
+    src/edgesession.h        src/edgesession.cpp
+)
+target_include_directories(agentedge PUBLIC src)
+target_link_libraries(agentedge PUBLIC Qt5::Core Qt5::Network Qt5::WebSockets)
 
 add_executable(copilot-agent WIN32 MACOSX_BUNDLE
     src/main.cpp
@@ -66,7 +73,7 @@ add_executable(copilot-agent WIN32 MACOSX_BUNDLE
     src/webpage.h            src/webpage.cpp
 )
 target_link_libraries(copilot-agent PRIVATE
-    agentcore agentweb Qt5::Widgets Qt5::WebEngineWidgets)
+    agentcore agentweb agentedge Qt5::Widgets Qt5::WebEngineWidgets)
 
 install(TARGETS copilot-agent
     BUNDLE DESTINATION .
@@ -93,4 +100,14 @@ if(COPILOTAGENT_BUILD_TESTS)
         set(_bridge_env "QT_QPA_PLATFORM=offscreen;QTWEBENGINE_CHROMIUM_FLAGS=--no-sandbox --disable-gpu")
     endif()
     set_tests_properties(tst_bridge PROPERTIES ENVIRONMENT "${_bridge_env}" LABELS webengine)
+
+    # Drives a real Edge/Chrome over DevTools against the same mock page.
+    # Uses COPILOTAGENT_TEST_BROWSER, else whatever findBrowser() finds;
+    # skips when there is no browser.
+    add_executable(tst_edge tests/tst_edge.cpp)
+    target_link_libraries(tst_edge PRIVATE agentedge agentcore Qt5::Test)
+    target_compile_definitions(tst_edge PRIVATE
+        MOCK_PAGE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/tests/mock_copilot.html")
+    add_test(NAME tst_edge COMMAND tst_edge)
+    set_tests_properties(tst_edge PROPERTIES LABELS browser TIMEOUT 300)
 endif()

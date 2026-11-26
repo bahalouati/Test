@@ -5,6 +5,7 @@
 #include <QString>
 
 class QCheckBox;
+class QComboBox;
 class QLineEdit;
 class QPlainTextEdit;
 class QSpinBox;
@@ -13,9 +14,12 @@ class QLabel;
 struct AppSettings
 {
     QString url = QStringLiteral("https://m365.cloud.microsoft/chat");
-    // Copilot in your own browser, messages passed through the clipboard.
-    // The default before Qt 5.15, whose Chromium is too old for the page.
-    bool externalBrowser = QT_VERSION < QT_VERSION_CHECK(5, 15, 0);
+    // Where Copilot runs:
+    //   "edge"      - the user's Edge (or Chrome), driven automatically
+    //   "clipboard" - any browser; messages are copied and pasted by hand
+    //   "builtin"   - Qt's own WebEngine (too old for the page on Qt 5.12)
+    QString mode = QStringLiteral("edge");
+    QString browserPath;   // empty: find Edge, then Chrome
     bool autoLoop = true;
     int maxSteps = 25;
     int charLimit = 12000;
@@ -41,7 +45,8 @@ private:
 
     AppSettings m_s;
     QLineEdit *m_url;
-    QCheckBox *m_external;
+    QComboBox *m_mode;
+    QLineEdit *m_browserPath;
     QSpinBox *m_maxSteps;
     QSpinBox *m_charLimit;
     QSpinBox *m_cmdTimeout;

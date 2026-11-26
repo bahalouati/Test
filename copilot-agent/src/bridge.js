@@ -23,6 +23,9 @@ var __copilotAgent = (function () {
       'button[aria-label*="send" i]',
       'button[title*="send" i]',
       'button[data-testid*="send" i]',
+      'button[aria-label*="submit" i]',
+      'button[title*="submit" i]',
+      '[role="button"][aria-label*="send" i]',
       'button[type="submit"]'
     ],
     stop: [
@@ -140,13 +143,62 @@ var __copilotAgent = (function () {
     snapshot: function (overrides) {
       var root = messageRoot(overrides);
       var stopBtn = findLast(cfg('stop', overrides));
+      var input = findLast(cfg('input', overrides));
+      var inputText = input ? currentText(input) : '';
+      var rootText = root.innerText || '';
       return {
         blocks: blocksIn(root, cfg('codeBlocks', overrides)),
-        textLength: (root.innerText || '').length,
+        // What is typed in the input box is not a reply: leave it out, or a
+        // prompt that was never sent looks like page activity.
+        textLength: rootText.length - (input && root.contains(input) ? (input.innerText || inputText).length : 0),
         busy: !!stopBtn,
-        hasInput: !!findLast(cfg('input', overrides)),
+        hasInput: !!input,
+        // Lets the app see whether the prompt actually left the input box.
+        inputHead: inputText.replace(/\s+/g, ' ').trim().slice(0, 200),
         url: location.href
       };
+    },
+
+    // Focus the input with the caret at the end, ready for a real key press
+    // from the app (pages ignore synthetic key events from scripts).
+    focusInput: function (overrides) {
+      var el = findLast(cfg('input', overrides));
+      if (!el) return { ok: false, error: 'input box not found' };
+      el.focus();
+      if (!isTextField(el)) {
+        var range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(false);
+        var sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        el.selectionStart = el.selectionEnd = el.value.length;
+      }
+      return { ok: true };
+    },
+
+    // Empty the input box and focus it, so the app can type the prompt in
+    // with real (trusted) text input.
+    prepareInput: function (overrides) {
+      var el = findLast(cfg('input', overrides));
+      if (!el) return { ok: false, error: 'chat input box not found (are you signed in?)' };
+      el.scrollIntoView({ block: 'center' });
+      if (isTextField(el)) setTextField(el, ''); else clearEditable(el);
+      el.focus();
+      return { ok: true };
+    },
+
+    // Last resort when the app cannot send a real key press.
+    syntheticEnter: function (overrides) {
+      var el = findLast(cfg('input', overrides));
+      if (!el) return { ok: false, error: 'input box gone before submit' };
+      el.focus();
+      var opts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
+      el.dispatchEvent(new KeyboardEvent('keydown', opts));
+      el.dispatchEvent(new KeyboardEvent('keypress', opts));
+      el.dispatchEvent(new KeyboardEvent('keyup', opts));
+      return { ok: true, method: 'synthetic-enter' };
     },
 
     fill: function (text, overrides) {
@@ -160,20 +212,15 @@ var __copilotAgent = (function () {
       return { ok: true, length: got, tag: el.tagName };
     },
 
+    // Clicks the send button if one can be found. Whether that worked is
+    // checked afterwards by looking at the input box.
     submit: function (overrides) {
       var btn = findLast(cfg('send', overrides));
       if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {
         btn.click();
         return { ok: true, method: 'button' };
       }
-      var el = findLast(cfg('input', overrides));
-      if (!el) return { ok: false, error: 'input box gone before submit' };
-      el.focus();
-      var opts = { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true };
-      el.dispatchEvent(new KeyboardEvent('keydown', opts));
-      el.dispatchEvent(new KeyboardEvent('keypress', opts));
-      el.dispatchEvent(new KeyboardEvent('keyup', opts));
-      return { ok: true, method: 'enter' };
+      return { ok: true, method: 'none' };
     }
   };
 })();

@@ -4,8 +4,6 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QWebEnginePage>
-#include <QWebEngineScript>
 
 static void initBridgeResource() { Q_INIT_RESOURCE(bridge); }
 
@@ -19,8 +17,8 @@ static QString normalizedText(const QString &text)
     return out;
 }
 
-CopilotBridge::CopilotBridge(QWebEnginePage *page, QObject *parent)
-    : QObject(parent), m_page(page)
+CopilotBridge::CopilotBridge(QObject *parent)
+    : QObject(parent)
 {
     initBridgeResource();
     QFile f(QStringLiteral(":/bridge.js"));
@@ -32,16 +30,13 @@ CopilotBridge::CopilotBridge(QWebEnginePage *page, QObject *parent)
 
 void CopilotBridge::run(const QString &call, std::function<void(const QVariantMap &)> done)
 {
-    if (!m_page) {
-        done({{QStringLiteral("ok"), false}, {QStringLiteral("error"), QStringLiteral("no page")}});
+    if (!m_runScript) {
+        done({{QStringLiteral("ok"), false}, {QStringLiteral("error"), QStringLiteral("no browser connected")}});
         return;
     }
     const quint64 gen = m_generation;
     QPointer<CopilotBridge> self(this);
-    // ApplicationWorld: same DOM, separate JS globals, unaffected by the
-    // page's own scripts and content security policy.
-    m_page->runJavaScript(m_js + QStringLiteral("\n;") + call, QWebEngineScript::ApplicationWorld,
-                          [self, gen, done](const QVariant &v) {
+    m_runScript(m_js + QStringLiteral("\n;") + call, [self, gen, done](const QVariant &v) {
         if (!self || self->m_generation != gen)
             return;   // cancelled meanwhile
         done(v.toMap());
@@ -78,34 +73,135 @@ void CopilotBridge::sendPrompt(const QString &text)
 {
     cancel();
     m_prompt = text;
-    takeBaseline([this, text] {
+    takeBaseline([this, text] { fillAndSubmit(text); });
+}
+
+void CopilotBridge::fillAndSubmit(const QString &text)
+{
+    const quint64 gen = m_generation;
+    // Let the editor's framework process the input before sending.
+    auto submitSoon = [this, gen] {
+        QTimer::singleShot(700, this, [this, gen] {
+            if (gen == m_generation)
+                trySubmit(0);
+        });
+    };
+    auto fillByScript = [this, text, submitSoon] {
         run(QStringLiteral("__copilotAgent.fill(%1, %2)").arg(jsArg(text), jsArg(m_overrides)),
-            [this](const QVariantMap &m) {
+            [this, submitSoon](const QVariantMap &m) {
             if (!m.value(QStringLiteral("ok")).toBool()) {
-                emit sendFailed(m.value(QStringLiteral("error"), QStringLiteral("script error")).toString());
+                emit sendFailed(m.value(QStringLiteral("error"), QStringLiteral("could not run the page script")).toString());
                 return;
             }
-            // Let the editor's framework process the input before sending.
-            const quint64 gen = m_generation;
-            QTimer::singleShot(700, this, [this, gen] {
-                if (gen != m_generation)
-                    return;
-                run(QStringLiteral("__copilotAgent.submit(%1)").arg(jsArg(m_overrides)),
-                    [this](const QVariantMap &r) {
-                    if (!r.value(QStringLiteral("ok")).toBool()) {
-                        emit sendFailed(r.value(QStringLiteral("error")).toString());
-                        return;
-                    }
-                    m_lastSignature.clear();
-                    m_stablePolls = 0;
-                    m_sawBusy = false;
-                    m_clock.start();
-                    m_poll.start();
-                    emit sent();
-                });
+            submitSoon();
+        });
+    };
+    if (!m_insertText) {
+        fillByScript();
+        return;
+    }
+    // Real typed input where the transport offers it: editors treat it
+    // exactly like the user typing. Fall back to the script if the text did
+    // not arrive.
+    run(QStringLiteral("__copilotAgent.prepareInput(%1)").arg(jsArg(m_overrides)),
+        [this, gen, text, submitSoon, fillByScript](const QVariantMap &m) {
+        if (!m.value(QStringLiteral("ok")).toBool()) {
+            emit sendFailed(m.value(QStringLiteral("error"), QStringLiteral("could not run the page script")).toString());
+            return;
+        }
+        m_insertText(text, [this, gen, submitSoon, fillByScript](bool ok) {
+            if (gen != m_generation)
+                return;
+            if (!ok) {
+                fillByScript();
+                return;
+            }
+            run(QStringLiteral("__copilotAgent.snapshot(%1)").arg(jsArg(m_overrides)),
+                [this, submitSoon, fillByScript](const QVariantMap &snap) {
+                if (promptStillInInput(snap))
+                    submitSoon();
+                else
+                    fillByScript();
             });
         });
     });
+}
+
+bool CopilotBridge::promptStillInInput(const QVariantMap &snapshot) const
+{
+    // Compare the start of what is in the box with the start of the prompt,
+    // ignoring whitespace (editors re-flow it).
+    const QString head = normalizedText(snapshot.value(QStringLiteral("inputHead")).toString());
+    const QString want = normalizedText(m_prompt).left(30);
+    return !head.isEmpty() && !want.isEmpty() && head.startsWith(want.left(qMin(want.size(), head.size())))
+        && head.size() >= qMin(10, want.size());
+}
+
+// Send in escalating ways, checking after each whether the prompt really
+// left the input box:
+//   0: the page's send button, if one is found
+//   1: a real Enter key press through the view
+//   2: a synthetic Enter from script (works on simple pages only)
+// then give up and ask the user to press Send, while still watching.
+void CopilotBridge::trySubmit(int attempt)
+{
+    const quint64 gen = m_generation;
+    auto checkLater = [this, gen, attempt] {
+        QTimer::singleShot(1500, this, [this, gen, attempt] {
+            if (gen != m_generation)
+                return;
+            run(QStringLiteral("__copilotAgent.snapshot(%1)").arg(jsArg(m_overrides)),
+                [this, attempt](const QVariantMap &snap) {
+                if (!promptStillInInput(snap)) {
+                    startWatching();
+                    emit sent();
+                } else if (attempt < 2) {
+                    trySubmit(attempt + 1);
+                } else {
+                    startWatching();
+                    m_unsentWarned = true;
+                    emit manualSendNeeded();
+                }
+            });
+        });
+    };
+
+    switch (attempt) {
+    case 0:
+        run(QStringLiteral("__copilotAgent.submit(%1)").arg(jsArg(m_overrides)),
+            [this, checkLater](const QVariantMap &r) {
+            if (r.value(QStringLiteral("method")).toString() == QLatin1String("button"))
+                checkLater();
+            else
+                trySubmit(1);   // no button found: go straight to Enter
+        });
+        break;
+    case 1:
+        if (!m_pressEnter) {
+            trySubmit(2);
+            break;
+        }
+        run(QStringLiteral("__copilotAgent.focusInput(%1)").arg(jsArg(m_overrides)),
+            [this, checkLater](const QVariantMap &) {
+            m_pressEnter();
+            checkLater();
+        });
+        break;
+    default:
+        run(QStringLiteral("__copilotAgent.syntheticEnter(%1)").arg(jsArg(m_overrides)),
+            [checkLater](const QVariantMap &) { checkLater(); });
+        break;
+    }
+}
+
+void CopilotBridge::startWatching()
+{
+    m_lastSignature.clear();
+    m_stablePolls = 0;
+    m_sawBusy = false;
+    m_unsentWarned = false;
+    m_clock.start();
+    m_poll.start();
 }
 
 QStringList CopilotBridge::newBlocks(const QStringList &all) const
@@ -148,12 +244,20 @@ void CopilotBridge::poll()
     emit waiting(elapsed);
 
     run(QStringLiteral("__copilotAgent.snapshot(%1)").arg(jsArg(m_overrides)), [this, elapsed](const QVariantMap &m) {
-        if (!m_poll.isActive())
-            return;
+        if (!m_poll.isActive() || !m.contains(QStringLiteral("blocks")))
+            return;   // script did not run (page reloading, browser gone): not a reply
         const QStringList blocks = toStrings(m.value(QStringLiteral("blocks")));
         const int textLength = m.value(QStringLiteral("textLength")).toInt();
         const bool busy = m.value(QStringLiteral("busy")).toBool();
         m_sawBusy = m_sawBusy || busy;
+
+        // Still sitting in the input box: nothing was sent, so nothing can
+        // have been answered. Keep waiting (the user may press Send).
+        if (promptStillInInput(m)) {
+            m_stablePolls = 0;
+            m_lastSignature.clear();
+            return;
+        }
 
         const QString sig = QString::number(textLength) + QLatin1Char('|') + QString::number(blocks.size())
             + QLatin1Char('|') + QString::fromLatin1(QCryptographicHash::hash(

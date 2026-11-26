@@ -6,6 +6,8 @@
 #include <QMainWindow>
 
 class CopilotBridge;
+class EdgeSession;
+class QSplitter;
 class QCheckBox;
 class QLabel;
 class QLineEdit;
@@ -33,11 +35,22 @@ private:
     void updateButtons();
     AgentController::Decision approve(AgentAction &a, QString *note);
     void deliverPrompt(const QString &text);
+    void deliverByClipboard(const QString &text);
+    void useTransportForMode();
+    void restoreGeometryForMode();
+    void saveGeometryForMode();
+    bool isMode(const char *m) const { return m_settings.mode == QLatin1String(m); }
     void pasteReply();
 
     AppSettings m_settings;
     AgentController *m_agent = nullptr;
     CopilotBridge *m_bridge = nullptr;
+    EdgeSession *m_edge = nullptr;
+    QString m_queuedPrompt;        // waiting for Edge to connect
+    bool m_edgeFellBack = false;   // Edge failed; clipboard used instead
+    QString m_geometryMode;        // mode whose geometry is applied
+    QSplitter *m_split = nullptr;
+    QAction *m_openEdge = nullptr;
 
     QWebEngineView *m_view = nullptr;
     QLineEdit *m_address = nullptr;
