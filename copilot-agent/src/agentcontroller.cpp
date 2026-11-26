@@ -7,6 +7,8 @@
 #include <QSysInfo>
 #include <QTimer>
 
+#include <algorithm>
+
 using namespace AgentProtocol;
 
 AgentController::AgentController(QObject *parent)

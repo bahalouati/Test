@@ -208,12 +208,46 @@ QStringList extractFencedBlocks(const QString &markdown)
 {
     QStringList out;
     static const QRegularExpression re(
-        QStringLiteral("(`{3,})[ \\t]*(agent|json)[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*\\1"),
+        QStringLiteral("(`{3,})[ \\t]*([\\w+-]*)[ \\t]*\\r?\\n(.*?)\\r?\\n[ \\t]*\\1"),
         QRegularExpression::DotMatchesEverythingOption | QRegularExpression::CaseInsensitiveOption);
     auto it = re.globalMatch(markdown);
     while (it.hasNext())
         out.append(it.next().captured(3));
     return out;
+}
+
+QStringList extractJsonObjects(const QString &text)
+{
+    QStringList out;
+    int depth = 0, start = -1;
+    bool inString = false, escaped = false;
+    for (int i = 0; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (c == QLatin1Char('\\')) escaped = true;
+            else if (c == QLatin1Char('"')) inString = false;
+            continue;
+        }
+        if (c == QLatin1Char('"') && depth > 0) {
+            inString = true;
+        } else if (c == QLatin1Char('{')) {
+            if (depth++ == 0)
+                start = i;
+        } else if (c == QLatin1Char('}') && depth > 0) {
+            if (--depth == 0)
+                out << text.mid(start, i - start + 1);
+        }
+    }
+    return out;
+}
+
+QStringList blocksFromReplyText(const QString &text)
+{
+    const QStringList fenced = extractFencedBlocks(text);
+    if (!parseBlocks(fenced).isEmpty())
+        return fenced;
+    return extractJsonObjects(text);
 }
 
 QString fence(const QString &body, const QString &lang)

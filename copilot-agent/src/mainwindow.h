@@ -13,6 +13,7 @@ class QPlainTextEdit;
 class QPushButton;
 class QSpinBox;
 class QTextBrowser;
+class QToolBar;
 class QWebEngineView;
 
 class MainWindow : public QMainWindow
@@ -31,6 +32,8 @@ private:
     void appendLog(AgentController::LogKind kind, const QString &text);
     void updateButtons();
     AgentController::Decision approve(AgentAction &a, QString *note);
+    void deliverPrompt(const QString &text);
+    void pasteReply();
 
     AppSettings m_settings;
     AgentController *m_agent = nullptr;
@@ -46,6 +49,8 @@ private:
     QPushButton *m_sendResults = nullptr;
     QPushButton *m_readReply = nullptr;
     QPushButton *m_copyPrompt = nullptr;
+    QPushButton *m_pasteReply = nullptr;
+    QToolBar *m_browserBar = nullptr;
     QCheckBox *m_autoLoop = nullptr;
     QSpinBox *m_maxSteps = nullptr;
     QTextBrowser *m_log = nullptr;

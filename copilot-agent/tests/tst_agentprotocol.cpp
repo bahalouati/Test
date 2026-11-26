@@ -81,8 +81,26 @@ private slots:
         const QString md = "Sure.\n```agent\n{\"action\":\"list_dir\"}\n```\ntext\n```python\nprint(1)\n```\n"
                            "````json\n{\"action\":\"done\",\"summary\":\"has ``` inside\"}\n````\n";
         const QStringList b = extractFencedBlocks(md);
-        QCOMPARE(b.size(), 2);
-        QCOMPARE(parseBlocks(b).size(), 2);
+        QCOMPARE(b.size(), 3);              // the python block too...
+        QCOMPARE(parseBlocks(b).size(), 2); // ...which the parser drops
+    }
+
+    void pastedReplies()
+    {
+        // Copied with the copy button: markdown with fences.
+        const QString md = "Let me look.\n\n```agent\n{\"action\":\"list_dir\"}\n```\n";
+        QCOMPARE(parseBlocks(blocksFromReplyText(md)).size(), 1);
+
+        // Selected by hand: the fences are gone, the labels and braces stay.
+        const QString plain = "Let me look.\nagent\n{\"action\":\"read_file\",\"path\":\"a{b}.txt\"}\n"
+                              "agent\n{\"action\":\"write_file\",\"path\":\"x\",\"content\":\"}\\\" {\"}\n"
+                              "Then I will check.";
+        const QList<AgentAction> a = parseBlocks(blocksFromReplyText(plain));
+        QCOMPARE(a.size(), 2);
+        QCOMPARE(a[0].path, QStringLiteral("a{b}.txt"));
+        QCOMPARE(a[1].content, QStringLiteral("}\" {"));
+
+        QVERIFY(parseBlocks(blocksFromReplyText("Which database should I use?")).isEmpty());
     }
 
     void fenceOutgrowsBackticks()

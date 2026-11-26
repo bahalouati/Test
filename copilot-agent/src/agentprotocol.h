@@ -21,9 +21,17 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
 // hears about the mistake.
 QList<AgentAction> parseBlocks(const QStringList &blocks);
 
-// Fallback for when the page shows raw markdown instead of rendered blocks:
-// pulls the bodies of ```agent / ```json fences out of the text.
+// Pulls the bodies of all ``` fences out of markdown (any language label;
+// parseBlocks() later drops the ones that are not actions).
 QStringList extractFencedBlocks(const QString &markdown);
+
+// Top-level {...} objects in free text, honouring JSON string escapes. For
+// replies copied without their fences.
+QStringList extractJsonObjects(const QString &text);
+
+// A reply copied by hand from Copilot (its copy button gives markdown, a
+// plain selection gives text): the candidate blocks for parseBlocks().
+QStringList blocksFromReplyText(const QString &text);
 
 // The message that reports a step's results back to Copilot.
 QString formatResults(const QList<ActionResult> &results, int step, int charLimit);

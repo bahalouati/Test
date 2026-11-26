@@ -1,5 +1,6 @@
 #include "settingsdialog.h"
 
+#include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -12,11 +13,23 @@
 #include <QSpinBox>
 #include <QVBoxLayout>
 
+// Rough Chromium generation of the WebEngine we were built with, for the hint.
+#if QT_VERSION < QT_VERSION_CHECK(5, 13, 0)
+#  define QTWEBENGINECORE_CHROMIUM_VERSION_HINT "69"
+#elif QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
+#  define QTWEBENGINECORE_CHROMIUM_VERSION_HINT "73-77"
+#elif QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#  define QTWEBENGINECORE_CHROMIUM_VERSION_HINT "80-87"
+#else
+#  define QTWEBENGINECORE_CHROMIUM_VERSION_HINT "90+"
+#endif
+
 AppSettings AppSettings::load()
 {
     QSettings q;
     AppSettings s;
     s.url = q.value(QStringLiteral("url"), s.url).toString();
+    s.externalBrowser = q.value(QStringLiteral("externalBrowser"), s.externalBrowser).toBool();
     s.autoLoop = q.value(QStringLiteral("autoLoop"), s.autoLoop).toBool();
     s.maxSteps = q.value(QStringLiteral("maxSteps"), s.maxSteps).toInt();
     s.charLimit = q.value(QStringLiteral("charLimit"), s.charLimit).toInt();
@@ -30,6 +43,7 @@ void AppSettings::save() const
 {
     QSettings q;
     q.setValue(QStringLiteral("url"), url);
+    q.setValue(QStringLiteral("externalBrowser"), externalBrowser);
     q.setValue(QStringLiteral("autoLoop"), autoLoop);
     q.setValue(QStringLiteral("maxSteps"), maxSteps);
     q.setValue(QStringLiteral("charLimit"), charLimit);
@@ -66,6 +80,15 @@ SettingsDialog::SettingsDialog(const AppSettings &s, QWidget *parent)
                                "enterprise data protection. Sign in with your work account."), this);
     hint->setWordWrap(true);
     form->addRow(QString(), hint);
+
+    m_external = new QCheckBox(tr("Use Copilot in my own browser (pass messages through the clipboard)"), this);
+    m_external->setChecked(s.externalBrowser);
+    form->addRow(QString(), m_external);
+    auto *extHint = new QLabel(tr("This app's built-in browser is Chromium %1. Microsoft 365 Copilot needs a "
+                                  "current browser; with Qt older than 5.15 the page will not load inside the app.")
+                                   .arg(QStringLiteral(QTWEBENGINECORE_CHROMIUM_VERSION_HINT)), this);
+    extHint->setWordWrap(true);
+    form->addRow(QString(), extHint);
 
     m_maxSteps = spin(1, 500, s.maxSteps, tr(" steps"), this);
     form->addRow(tr("Auto-loop limit:"), m_maxSteps);
@@ -113,6 +136,7 @@ AppSettings SettingsDialog::settings() const
 {
     AppSettings s = m_s;
     s.url = m_url->text().trimmed();
+    s.externalBrowser = m_external->isChecked();
     s.maxSteps = m_maxSteps->value();
     s.charLimit = m_charLimit->value();
     s.commandTimeoutSec = m_cmdTimeout->value();
