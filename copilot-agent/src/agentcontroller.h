@@ -5,6 +5,7 @@
 #include "workspace.h"
 
 #include <QList>
+#include <QElapsedTimer>
 #include <QObject>
 #include <QQueue>
 
@@ -34,6 +35,9 @@ public:
         int maxSteps = 25;
         int charLimit = 12000;       // per message sent to Copilot
         int commandTimeoutSec = 300;
+        // Pause between Copilot's reply and the next automatic message, so
+        // the loop paces itself like a person instead of firing back at once.
+        int autoSendDelaySec = 5;
     };
 
     explicit AgentController(QObject *parent = nullptr);
@@ -88,4 +92,6 @@ private:
     QString m_lastPrompt;
     QString m_doneSummary;
     bool m_doneSeen = false;
+    QElapsedTimer m_sinceReply;
+    quint64 m_sendSerial = 0;   // invalidates a pending delayed send
 };

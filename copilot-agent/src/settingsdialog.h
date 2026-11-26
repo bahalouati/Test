@@ -21,6 +21,7 @@ struct AppSettings
     int charLimit = 12000;
     int commandTimeoutSec = 300;
     int replyTimeoutSec = 600;
+    int autoSendDelaySec = 5;
     QString selectorsJson;   // overrides for bridge.js, may be empty
 
     static AppSettings load();
@@ -45,6 +46,7 @@ private:
     QSpinBox *m_charLimit;
     QSpinBox *m_cmdTimeout;
     QSpinBox *m_replyTimeout;
+    QSpinBox *m_autoDelay;
     QPlainTextEdit *m_selectors;
     QLabel *m_selectorError;
 };

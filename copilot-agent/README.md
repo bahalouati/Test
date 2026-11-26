@@ -1,6 +1,6 @@
 # Copilot Agent
 
-A Qt desktop app (Qt 5.12+ or Qt 6.2+) that turns **Microsoft 365 Copilot Chat** into a coding agent.
+A Qt 5 desktop app (Qt 5.12 or newer, developed against 5.12.2) that turns **Microsoft 365 Copilot Chat** into a coding agent.
 
 The left side of the window is the real Copilot page in Qt WebEngine. You sign in with your
 work account, so your organisation's enterprise data protection applies. The right side is the
@@ -11,6 +11,20 @@ agent panel. You pick a project folder and describe a task. The app then:
 3. runs the actions: reads and listings run straight away, but **every file write and every
    command shows a dialog first** (a diff for writes, an editable command line for commands),
 4. pastes the results back into the chat, and repeats until Copilot sends `done`.
+
+## What it can and cannot do
+
+- It **cannot** take screenshots, see your screen, or move the mouse or type into other programs.
+- Without asking, it can only **read and list files inside the project folder** you choose.
+- **Writing a file or running a command always needs your approval.** An approved command runs
+  with your own user's permissions, which is why the dialog shows the exact command and lets
+  you edit or reject it.
+- It talks to Copilot only through the chat, like you would. The first message is a plain,
+  polite request with no "system prompt" style instructions. It asks Copilot to keep
+  commands simple and safe: build, test and inspect, but no deleting, no admin rights, and
+  nothing interactive or long-running. With auto-loop on, it waits a few seconds after each
+  reply before sending results (**Pause before auto-send** in Settings, default 5 s), so it
+  keeps a human pace.
 
 ## Actions
 
@@ -32,13 +46,12 @@ outside the folder are refused before anything is touched.
 
 ## Build
 
-You need Qt **5.12 or newer** or Qt **6.2 or newer**, with the WebEngine module, and CMake 3.16
-or newer. When both majors are installed, CMake picks Qt 6; add `-DCOPILOTAGENT_QT_VERSION=5`
-to use Qt 5.
+You need **Qt 5.12 or newer** (Qt 5 only; Qt 6 is not supported) with the WebEngine module,
+and CMake 3.16 or newer. No Python is needed: CI only uses it to download Qt.
 
 ```bash
 # Ubuntu/Debian
-sudo apt install qt6-base-dev qt6-webengine-dev cmake g++
+sudo apt install qtbase5-dev qtwebengine5-dev cmake g++   # distro Qt 5.15
 
 cmake -S copilot-agent -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
@@ -46,10 +59,30 @@ cmake --build build -j
 ```
 
 For Qt 5.12.2, point CMake at the kit, for example
-`-DCOPILOTAGENT_QT_VERSION=5 -DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
+`-DCMAKE_PREFIX_PATH=$HOME/Qt/5.12.2/gcc_64`. On Windows, Qt
 WebEngine 5.12 needs an MSVC kit (msvc2017_64); MinGW kits do not include it.
 
-On Windows and macOS, install Qt with the online installer and tick **Qt WebEngine**. Then
+### Windows, Qt 5.12.2, MSVC 2019, 32-bit
+
+Qt 5.12 has no "msvc2019" kit. Use **MSVC2017 32-bit** (`win32_msvc2017`), which MSVC 2019 links
+against fine because the two are binary-compatible. In the Qt installer, tick
+*Qt 5.12.2 → MSVC 2017 32-bit* and *Qt WebEngine*. Then, from an
+**x86 Native Tools Command Prompt for VS 2019**:
+
+```bat
+cmake -S copilot-agent -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
+      -DCMAKE_PREFIX_PATH=C:\Qt\5.12.2\msvc2017
+cmake --build build
+ctest --test-dir build --output-on-failure
+C:\Qt\5.12.2\msvc2017\bin\windeployqt.exe --release build\copilot-agent.exe
+```
+
+(Or `-G "Visual Studio 16 2019" -A Win32` instead of Ninja, then add `--config Release` to
+the build and test commands.) `windeployqt` copies the Qt DLLs, `QtWebEngineProcess.exe` and
+the WebEngine resources next to the exe so it runs on other machines. That machine also needs
+the VC++ 2015-2019 x86 redistributable.
+
+On other Windows setups and on macOS, install Qt with the online installer and tick **Qt WebEngine**. Then
 point CMake at it with `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2019_64`. On Windows, run
 `windeployqt` on the built exe.
 

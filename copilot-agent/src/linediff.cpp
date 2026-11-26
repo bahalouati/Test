@@ -3,6 +3,7 @@
 #include <QStringList>
 #include <QVector>
 
+#include <algorithm>
 #include <vector>
 
 namespace LineDiff {
