@@ -15,6 +15,7 @@ struct AgentAction
         WriteFile,      // needs approval
         ReplaceInFile,  // needs approval
         RunCommand,     // needs approval
+        SetCells,       // Excel cells; needs approval
         Done,           // the task is finished
         Invalid         // could not be understood; reported back as an error
     };
@@ -38,11 +39,13 @@ struct AgentAction
     bool regex = false;    // search
     bool caseSensitive = false;   // search
     int maxResults = 0;    // search / find_files; 0 means "use the default"
+    QString sheet;         // set_cells
+    QJsonObject cells;     // set_cells: {"B2": value, ...}
     QJsonObject raw;
 
     bool needsApproval() const
     {
-        return type == WriteFile || type == ReplaceInFile || type == RunCommand;
+        return type == WriteFile || type == ReplaceInFile || type == RunCommand || type == SetCells;
     }
 };
 

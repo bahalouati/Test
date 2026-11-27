@@ -26,6 +26,14 @@ public:
     ActionResult listDir(const AgentAction &a) const;
     ActionResult writeFile(const AgentAction &a) const;
     ActionResult replaceInFile(const AgentAction &a) const;
+    ActionResult setCells(const AgentAction &a) const;
+
+    // Word/Excel edits (replace_in_file on .docx, set_cells on .xlsx):
+    // the new file bytes and the readable text before and after, for the
+    // approval preview. Nothing is written.
+    bool officeEdit(const AgentAction &a, QByteArray *newBytes, QString *before, QString *after,
+                    QString *error, QString *note) const;
+    static constexpr qint64 kMaxOfficeBytes = 50 * 1024 * 1024;
     // Read-only and safe to run off the GUI thread (on a copy).
     ActionResult search(const AgentAction &a) const;
     ActionResult findFiles(const AgentAction &a) const;

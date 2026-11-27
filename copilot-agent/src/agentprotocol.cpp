@@ -76,6 +76,7 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
         "- change part of a file: `{\"action\":\"replace_in_file\",\"path\":\"<file>\",\"old\":\"<exact current text>\",\"new\":\"<new text>\"}`\n"
         "- save a whole file: `{\"action\":\"write_file\",\"path\":\"<file>\",\"content\":\"<the full file content>\"}`\n"
         "- run a command: `{\"action\":\"run_command\",\"command\":\"<command>\",\"cwd\":\"<folder>\",\"timeout\":<seconds>}`\n"
+        "- set Excel cells: `{\"action\":\"set_cells\",\"path\":\"<file.xlsx>\",\"sheet\":\"<sheet name>\",\"cells\":{\"<B2>\":\"<text>\",\"<C3>\":<number>,\"<D4>\":\"<=SUM(C1:C3)>\"}}`\n"
         "- update the project notes: `{\"action\":\"update_notes\",\"content\":\"<the full notes, in markdown>\"}`\n"
         "- finish: `{\"action\":\"done\",\"summary\":\"<what changed and how to check it>\"}`\n"
         "\n"
@@ -89,6 +90,10 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
         "- To change an existing file, please use replace_in_file with a small, exact \"old\" text that appears "
         "only once. Please keep write_file for new files and short ones: a long file rewritten in one reply "
         "can get cut off.\n"
+        "- Word (.docx) and Excel (.xlsx) files can be read and searched like text: Word shows paragraphs, "
+        "Excel shows one cell per line, like `B2 = 120`. To change Word text, use replace_in_file with text from one "
+        "paragraph; the formatting is kept. To change Excel, use set_cells (a value starting with = is a formula; "
+        "null empties a cell). write_file cannot be used on them.\n"
         "- The JSON needs to be valid, so newlines in strings are written as \\n and quotes as \\\".\n"
         "- After a set of steps, please wait for me to paste the results before going on.\n"
         "- Please keep commands simple and safe: building, testing and inspecting are great. Please avoid "
@@ -188,6 +193,16 @@ static AgentAction fromObject(const QJsonObject &o)
         a.timeoutSec = qMax(0, num(o, "timeout", 0));
         if (a.command.isEmpty())
             a.error = QStringLiteral("run_command needs \"command\"");
+    } else if (n == QLatin1String("set_cells") || n == QLatin1String("set_cell") || n == QLatin1String("edit_cells")) {
+        a.type = AgentAction::SetCells;
+        a.sheet = str(o, {"sheet", "worksheet"});
+        a.cells = o.value(QLatin1String("cells")).toObject();
+        if (a.cells.isEmpty() && o.value(QLatin1String("cell")).isString())   // {"cell":"B2","value":...}
+            a.cells.insert(o.value(QLatin1String("cell")).toString(), o.value(QLatin1String("value")));
+        if (a.path.isEmpty())
+            a.error = QStringLiteral("set_cells needs \"path\"");
+        else if (a.cells.isEmpty())
+            a.error = QStringLiteral("set_cells needs \"cells\", e.g. {\"B2\": \"text\", \"C3\": 42}");
     } else if (n == QLatin1String("search") || n == QLatin1String("grep") || n == QLatin1String("search_text")) {
         a.type = AgentAction::Search;
         a.query = str(o, {"query", "text", "pattern", "q"});
@@ -471,6 +486,9 @@ QString actionLabel(const AgentAction &a)
     case AgentAction::WriteFile:     return QStringLiteral("write_file %1").arg(a.path);
     case AgentAction::ReplaceInFile: return QStringLiteral("replace_in_file %1").arg(a.path);
     case AgentAction::RunCommand:    return QStringLiteral("run_command `%1`").arg(a.command);
+    case AgentAction::SetCells:      return QStringLiteral("set_cells %1%2 (%3 cells)").arg(a.path,
+                                         a.sheet.isEmpty() ? QString() : QStringLiteral(" [") + a.sheet + QLatin1Char(']'))
+                                         .arg(a.cells.size());
     case AgentAction::Done:          return QStringLiteral("done");
     case AgentAction::Invalid:       return QStringLiteral("%1 (invalid)").arg(a.name.isEmpty() ? QStringLiteral("?") : a.name);
     }

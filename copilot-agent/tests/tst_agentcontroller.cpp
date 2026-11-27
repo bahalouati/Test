@@ -353,6 +353,32 @@ private slots:
         QVERIFY(QFile::exists(m_dir.path() + "/other.cpp"));
     }
 
+    void excelEditNeedsApprovalAndUndoes()
+    {
+        QFile src(QStringLiteral(FIXTURES_DIR "/budget.xlsx"));
+        QVERIFY(src.open(QIODevice::ReadOnly));
+        const QByteArray original = src.readAll();
+        QFile f(m_dir.path() + "/budget.xlsx");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(original);
+        f.close();
+
+        AgentController *c = make(Decision::Approve, /*autoLoop*/ false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"set_cells\",\"path\":\"budget.xlsx\",\"sheet\":\"Budget\",\"cells\":{\"B2\":150}}"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QCOMPARE(m_asked, QStringList{"budget.xlsx"});   // asked first
+        QVERIFY2(c->pendingResults().contains("1 cells set"), qPrintable(c->pendingResults()));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QVERIFY(f.readAll() != original);
+        f.close();
+        QString msg;
+        QVERIFY(c->undoLast(&msg));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), original);                 // byte for byte
+    }
+
     void manualModeHoldsResults()
     {
         AgentController *c = make(Decision::Approve, /*autoLoop*/ false);
