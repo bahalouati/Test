@@ -59,6 +59,7 @@ Copilot can and will make mistakes, so the app assumes it will:
 | `list_dir`        | no             | Lists a folder (skips ignored files and build folders) |
 | `read_file`       | no             | Reads a file, or a line range of it; long files come in parts |
 | `update_notes`    | no, but undoable | Rewrites `AGENT_NOTES.md`, the project notes        |
+| `set_cells`       | **yes**, with a preview | Sets Excel cells (values, `=formulas`, `null` to empty) |
 | `write_file`      | **yes**, with a diff | Creates or replaces a whole file                |
 | `replace_in_file` | **yes**, with a diff | Replaces one exact, unique snippet               |
 | `run_command`     | **yes**, editable    | Runs a shell command (`bash -c` or `cmd /C`) with a timeout |
@@ -70,6 +71,25 @@ sending anything more.
 
 Paths are resolved inside the project folder only. `..`, absolute paths and symlinks that point
 outside the folder are refused before anything is touched.
+
+## Word and Excel files
+
+`.docx`/`.docm` and `.xlsx`/`.xlsm` files can be read, searched and edited without breaking them.
+
+- **Reading and searching**: Word shows as paragraphs, with headings as `#` and tables as
+  `| a | b |`. Excel shows one cell per line, sheet by sheet: `B2 = 120`, formulas with their last
+  result (`B4 = =SUM(B2:B3)   [value: 1020.5]`), dates as dates.
+- **Word edits** use `replace_in_file` with text from one paragraph. Only that text changes
+  inside the document, so styles, images, tables and layout stay as they were. If the old text
+  spans differently formatted parts, for example half bold, the new text takes the first
+  part's formatting, and the approval dialog says so.
+- **Excel edits** use `set_cells`. Values, `=formulas`, true/false and emptying cells all work,
+  and each cell keeps its formatting. After an edit, cached formula results are dropped, so
+  Excel (and LibreOffice) recalculate everything when the file is opened.
+- The approval dialog previews the document text or cells before and after. **Undo change**
+  restores the original file byte for byte.
+- `write_file` is refused on Word, Excel and any other binary file, so they can't be overwritten
+  with plain text. New Office files can't be created, and old `.doc`/`.xls` files aren't supported.
 
 ## Picking files for a task
 

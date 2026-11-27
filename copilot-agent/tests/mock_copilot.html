@@ -98,6 +98,8 @@
       var action = { action: 'list_dir', path: 'reply-' + n + '-len-' + t.length };
       if (t.indexOf('MOCK_WRITE') >= 0)
         action = { action: 'write_file', path: 'README.md', content: '# Demo\n\nA tiny C++ program.\n' };
+      else if (t.indexOf('MOCK_EXCEL') >= 0)
+        action = { action: 'set_cells', path: 'budget.xlsx', sheet: 'Budget', cells: { B3: 950, B5: '=B4*2' } };
       else if (t.indexOf('MOCK_RUN') >= 0)
         action = { action: 'run_command', command: 'ls -la src' };
       else if (t.indexOf('write_file README.md') >= 0)

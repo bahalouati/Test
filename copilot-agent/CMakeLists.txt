@@ -43,6 +43,7 @@ add_library(agentcore STATIC
     src/agentprotocol.h      src/agentprotocol.cpp
     src/workspace.h          src/workspace.cpp
     src/ignorerules.h        src/ignorerules.cpp
+    src/officefile.h         src/officefile.cpp
     src/linediff.h           src/linediff.cpp
     src/commandrunner.h      src/commandrunner.cpp
     src/agentcontroller.h    src/agentcontroller.cpp
@@ -50,7 +51,10 @@ add_library(agentcore STATIC
     src/bridge.qrc
 )
 target_include_directories(agentcore PUBLIC src)
-target_link_libraries(agentcore PUBLIC Qt5::Core Qt5::Concurrent)
+target_link_libraries(agentcore PUBLIC Qt5::Core Qt5::Concurrent Qt5::Gui)
+# Word/Excel files are zip archives; Qt's zip reader/writer are in QtGui's
+# private headers (stable across Qt 5, shipped with every Qt kit).
+target_include_directories(agentcore PRIVATE ${Qt5Gui_PRIVATE_INCLUDE_DIRS})
 
 # Transports for the bridge: Qt's built-in WebEngine, and the user's own
 # Edge/Chrome over the DevTools protocol. In Qt 5, QWebEnginePage and
@@ -84,10 +88,13 @@ if(COPILOTAGENT_BUILD_TESTS)
     enable_testing()
     find_package(Qt5 REQUIRED COMPONENTS Test)
 
-    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller)
+    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller tst_office)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE agentcore Qt5::Test)
         add_test(NAME ${name} COMMAND ${name})
+    endforeach()
+    foreach(name tst_office tst_agentcontroller)
+        target_compile_definitions(${name} PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     endforeach()
 
     # Drives the real JS bridge against a local mock of the Copilot page.

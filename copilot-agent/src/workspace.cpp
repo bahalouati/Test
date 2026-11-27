@@ -1,5 +1,7 @@
 #include "workspace.h"
 
+#include "officefile.h"
+
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -84,6 +86,21 @@ static ActionResult fail(const AgentAction &a, const QString &why)
 static bool readText(const QString &path, QString *out, QString *error)
 {
     QFile f(path);
+    // Word and Excel files are zip archives: read the text inside them.
+    const Office::Kind kind = Office::kindOf(path);
+    if (kind != Office::None) {
+        if (f.size() > Workspace::kMaxOfficeBytes || !f.open(QIODevice::ReadOnly)) {
+            *error = f.isOpen() ? f.errorString() : QStringLiteral("the file is too large");
+            return false;
+        }
+        QString err;
+        *out = Office::extractText(f.readAll(), kind, &err);
+        if (!err.isEmpty()) {
+            *error = err;
+            return false;
+        }
+        return true;
+    }
     if (f.size() > Workspace::kMaxReadBytes) {
         *error = QStringLiteral("file is %1 KB, over the %2 KB limit; read a line range instead")
                      .arg(f.size() / 1024).arg(Workspace::kMaxReadBytes / 1024);
@@ -117,7 +134,7 @@ ActionResult Workspace::readFile(const AgentAction &a) const
     QString text;
     if (!readText(abs, &text, &err))
         return fail(a, err);
-    const bool tooBig = fi.size() > kMaxReadBytes;
+    const bool tooBig = fi.size() > kMaxReadBytes && Office::kindOf(abs) == Office::None;
     if (tooBig && a.startLine == 0 && a.endLine == 0)
         return fail(a, err);
 
@@ -222,6 +239,19 @@ ActionResult Workspace::writeFile(const AgentAction &a) const
     if (QFileInfo(abs).isDir())
         return fail(a, QStringLiteral("is a directory"));
     const bool existed = QFileInfo::exists(abs);
+    // Never overwrite a Word/Excel/binary file with text: it would destroy it.
+    const Office::Kind kind = Office::kindOf(abs);
+    if (existed && kind == Office::Word)
+        return fail(a, QStringLiteral("this is a Word document; write_file would destroy it. Change its text with replace_in_file"));
+    if (existed && kind == Office::Excel)
+        return fail(a, QStringLiteral("this is an Excel workbook; write_file would destroy it. Change cells with set_cells"));
+    if (existed) {
+        QFile probe(abs);
+        if (probe.open(QIODevice::ReadOnly) && probe.read(8000).contains('\0'))
+            return fail(a, QStringLiteral("this is a binary file; write_file only writes text and would destroy it"));
+    }
+    if (!existed && kind != Office::None)
+        return fail(a, QStringLiteral("new Word/Excel files cannot be created; write a .md or .csv file instead"));
     if (!saveText(abs, a.content, &err))
         return fail(a, err);
     ActionResult r;
@@ -280,8 +310,81 @@ QString Workspace::applyReplace(const AgentAction &a, QString *error) const
     return body;
 }
 
+bool Workspace::officeEdit(const AgentAction &a, QByteArray *newBytes, QString *before, QString *after,
+                           QString *error, QString *note) const
+{
+    const QString abs = resolve(a.path, error);
+    if (abs.isEmpty())
+        return false;
+    const Office::Kind kind = Office::kindOf(abs);
+    if (kind == Office::None || !QFileInfo(abs).isFile()) {
+        *error = QFileInfo(abs).isFile() ? QStringLiteral("not a Word or Excel file") : QStringLiteral("file not found");
+        return false;
+    }
+    if (a.type == AgentAction::SetCells && kind != Office::Excel) {
+        *error = QStringLiteral("set_cells works on Excel files (.xlsx); use replace_in_file for Word");
+        return false;
+    }
+    if (a.type == AgentAction::ReplaceInFile && kind != Office::Word) {
+        *error = QStringLiteral("replace_in_file cannot change an Excel workbook; use set_cells");
+        return false;
+    }
+    QFile f(abs);
+    if (f.size() > kMaxOfficeBytes || !f.open(QIODevice::ReadOnly)) {
+        *error = QStringLiteral("cannot open the file");
+        return false;
+    }
+    Office::Package pkg;
+    if (!pkg.load(f.readAll(), error))
+        return false;
+    QString err;
+    *before = kind == Office::Word ? Office::wordText(pkg, &err) : Office::excelText(pkg, &err);
+    if (a.type == AgentAction::SetCells) {
+        QString used;
+        if (!Office::excelSetCells(pkg, a.sheet, a.cells, error, &used))
+            return false;
+        if (a.sheet.isEmpty())
+            *note = QStringLiteral("changed sheet \"%1\"").arg(used);
+    } else if (!Office::wordReplace(pkg, a.oldText, a.newText, error, note)) {
+        return false;
+    }
+    *after = kind == Office::Word ? Office::wordText(pkg, &err) : Office::excelText(pkg, &err);
+    *newBytes = pkg.save();
+    error->clear();
+    return true;
+}
+
+static ActionResult saveOfficeEdit(const Workspace &ws, const AgentAction &a, const QString &what)
+{
+    QByteArray bytes;
+    QString before, after, err, note;
+    ActionResult r;
+    r.action = a;
+    if (!ws.officeEdit(a, &bytes, &before, &after, &err, &note)) {
+        r.status = QStringLiteral("error: ") + err;
+        return r;
+    }
+    QString abs = ws.resolve(a.path, &err);
+    QSaveFile f(abs);
+    if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size() || !f.commit()) {
+        r.status = QStringLiteral("error: cannot save the file: ") + f.errorString();
+        return r;
+    }
+    r.ok = true;
+    r.status = QStringLiteral("ok, ") + what + (note.isEmpty() ? QString() : QStringLiteral(" (") + note + QLatin1Char(')'));
+    return r;
+}
+
+ActionResult Workspace::setCells(const AgentAction &a) const
+{
+    return saveOfficeEdit(*this, a, QStringLiteral("%1 cells set; Excel recalculates formulas when it opens the file")
+                                       .arg(a.cells.size()));
+}
+
 ActionResult Workspace::replaceInFile(const AgentAction &a) const
 {
+    if (Office::kindOf(a.path) != Office::None)
+        return saveOfficeEdit(*this, a, QStringLiteral("1 replacement, formatting kept"));
     QString err;
     const QString updated = applyReplace(a, &err);
     if (!err.isEmpty())
@@ -363,13 +466,23 @@ ActionResult Workspace::search(const AgentAction &a) const
                 return true;
         }
         QFile f(abs);
-        if (f.size() > kMaxSearchFileBytes || !f.open(QIODevice::ReadOnly))
-            return true;
-        // Binary files are recognised from their start, before reading them whole.
-        QByteArray bytes = f.read(8000);
-        if (bytes.contains('\0'))
-            return true;
-        bytes += f.readAll();
+        QByteArray bytes;
+        const Office::Kind office = Office::kindOf(abs);
+        if (office != Office::None) {
+            // Search the text inside Word and Excel files.
+            if (f.size() > kMaxOfficeBytes || !f.open(QIODevice::ReadOnly))
+                return true;
+            QString err;
+            bytes = Office::extractText(f.readAll(), office, &err).toUtf8();
+        } else {
+            if (f.size() > kMaxSearchFileBytes || !f.open(QIODevice::ReadOnly))
+                return true;
+            // Binary files are recognised from their start, before reading them whole.
+            bytes = f.read(8000);
+            if (bytes.contains('\0'))
+                return true;
+            bytes += f.readAll();
+        }
         ++files;
         // Cheap byte-level check first; only files that can match are split
         // into lines. (Not possible for regular expressions.)

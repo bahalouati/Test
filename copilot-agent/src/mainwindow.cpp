@@ -4,6 +4,7 @@
 #include "approvaldialog.h"
 #include "copilotbridge.h"
 #include "linediff.h"
+#include "officefile.h"
 #include "edgesession.h"
 #include "webenginetransport.h"
 #include "webpage.h"
@@ -602,6 +603,16 @@ AgentController::Decision MainWindow::approve(AgentAction &a, QString *note)
         const QString before = m_agent->workspace().currentContent(a.path, &exists);
         preview = LineDiff::unified(exists ? before : QString(), a.content, a.path);
         warnings = AgentProtocol::writeWarnings(before, exists, a.content);
+    } else if (a.type == AgentAction::SetCells
+               || (a.type == AgentAction::ReplaceInFile && Office::kindOf(a.path) != Office::None)) {
+        // Word/Excel: preview the readable text before and after.
+        QByteArray bytes;
+        QString before, after, err, note;
+        if (!m_agent->workspace().officeEdit(a, &bytes, &before, &after, &err, &note))
+            return AgentController::Decision::Approve;   // cannot apply: let it fail and tell Copilot
+        preview = LineDiff::unified(before, after, a.path);
+        if (!note.isEmpty())
+            warnings << note.left(1).toUpper() + note.mid(1) + QLatin1Char('.');
     } else if (a.type == AgentAction::ReplaceInFile) {
         QString err;
         bool exists = false;

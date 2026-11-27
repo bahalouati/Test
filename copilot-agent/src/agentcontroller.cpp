@@ -233,7 +233,7 @@ void AgentController::runNext()
 
     // Changes outside the files the user picked are refused outright.
     const bool changesAFile = a.type == AgentAction::WriteFile || a.type == AgentAction::ReplaceInFile
-                           || a.type == AgentAction::UpdateNotes;
+                           || a.type == AgentAction::SetCells || a.type == AgentAction::UpdateNotes;
     if (changesAFile && onlyFocusFiles()
         && (a.type == AgentAction::UpdateNotes || outsideFocus(a.path))) {
         ActionResult r;
@@ -316,6 +316,16 @@ void AgentController::runNext()
         record(r);
         if (!r.ok)
             skipRemaining(QStringLiteral("skipped: the write before it failed"));
+        break;
+    }
+    case AgentAction::SetCells: {
+        const FileChange before = snapshot(a.path);
+        const ActionResult r = m_ws.setCells(a);
+        if (r.ok)
+            remember(before);
+        record(r);
+        if (!r.ok)
+            skipRemaining(QStringLiteral("skipped: the edit before it failed"));
         break;
     }
     case AgentAction::ReplaceInFile: {

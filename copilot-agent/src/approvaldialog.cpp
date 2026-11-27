@@ -94,7 +94,7 @@ ApprovalDialog::ApprovalDialog(const AgentAction &a, const QString &preview,
         lay->addWidget(warn);
         lay->addStretch();
     } else {
-        const bool replace = a.type == AgentAction::ReplaceInFile;
+        const bool replace = a.type == AgentAction::ReplaceInFile || a.type == AgentAction::SetCells;
         setWindowTitle(replace ? tr("Edit this file?") : tr("Write this file?"));
         const LineDiff::Stats st = LineDiff::stats(preview);
         title->setText(tr("Copilot wants to %1 %2   (+%3 / -%4)")
