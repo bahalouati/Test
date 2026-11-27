@@ -187,18 +187,54 @@ private slots:
         }
     }
 
+    void parsesSearchFindAndNotes()
+    {
+        const QList<AgentAction> a = parseBlocks({
+            "{\"action\":\"search\",\"query\":\"QTimer\",\"path\":\"src\",\"glob\":\"*.cpp\",\"regex\":true,\"case_sensitive\":true,\"max_results\":5}",
+            "{\"action\":\"find_files\",\"pattern\":\"src/**/main*\"}",
+            "{\"action\":\"update_notes\",\"content\":\"# Notes\"}",
+            "{\"action\":\"search\"}",
+        });
+        QCOMPARE(a.size(), 4);
+        QCOMPARE(a[0].type, AgentAction::Search);
+        QCOMPARE(a[0].query, QStringLiteral("QTimer"));
+        QCOMPARE(a[0].glob, QStringLiteral("*.cpp"));
+        QVERIFY(a[0].regex && a[0].caseSensitive);
+        QCOMPARE(a[0].maxResults, 5);
+        QCOMPARE(a[1].type, AgentAction::FindFiles);
+        QCOMPARE(a[1].glob, QStringLiteral("src/**/main*"));
+        QCOMPARE(a[2].type, AgentAction::UpdateNotes);
+        QVERIFY(!a[2].needsApproval() && !a[0].needsApproval() && !a[1].needsApproval());
+        QCOMPARE(a[3].type, AgentAction::Invalid);
+    }
+
+    void promptCarriesNotes()
+    {
+        const QString without = taskPrompt("t", "p", "os", "sh");
+        QVERIFY(without.contains("no project notes yet"));
+        QVERIFY(without.contains("\"action\":\"search\""));
+        QVERIFY(without.contains("start_line"));
+        const QString with = taskPrompt("t", "p", "os", "sh", "# Project\nBuild with cmake.");
+        QVERIFY(with.contains("Build with cmake."));
+        QVERIFY(with.contains("AGENT_NOTES.md"));
+        // Notes go in a fenced markdown block (not agent): never an action.
+        QVERIFY(parseBlocks(extractFencedBlocks(with)).isEmpty());
+    }
+
     void promptHasNoFencedExamples()
     {
         // Our own message must never contain a parseable block.
         const QString p = taskPrompt("do it", "proj", "Linux", "/bin/bash");
         QVERIFY(extractFencedBlocks(p).isEmpty());
-        QVERIFY(!p.contains("```"));
+        QVERIFY(!p.contains("```"));   // no notes given: no fence at all
         QVERIFY(p.contains("do it"));
         QVERIFY(p.contains("/bin/bash"));
         // Reads as a request, not an override: none of the phrasing that
         // chat filters associate with prompt injection.
-        for (const char *w : {"You are", "RULES", "Never", "ignore", "IMPORTANT", "must"})
+        for (const char *w : {"You are", "RULES", "Never", "IMPORTANT", "must"})
             QVERIFY2(!p.contains(QLatin1String(w)), w);
+        // "ignore" as an instruction; ".gitignore" and "ignored" are fine.
+        QVERIFY(!p.contains(QRegularExpression(QStringLiteral("\\bignore\\b"), QRegularExpression::CaseInsensitiveOption)));
     }
 };
 

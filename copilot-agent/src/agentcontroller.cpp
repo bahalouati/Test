@@ -8,7 +8,9 @@
 #include <QStandardPaths>
 #include <QFileInfo>
 #include <QSysInfo>
+#include <QFutureWatcher>
 #include <QTimer>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 
@@ -80,8 +82,11 @@ void AgentController::startTask(const QString &task)
     m_failStreak = 0;
     m_notes.clear();
     emit log(LogKind::Info, tr("New task in %1").arg(QDir::toNativeSeparators(m_ws.root())));
+    const QString notes = m_ws.readNotes();
+    if (!notes.isEmpty())
+        emit log(LogKind::Info, tr("Including the project notes (%1).").arg(Workspace::notesFileName()));
     send(taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
-                    CommandRunner::shellName()));
+                    CommandRunner::shellName(), notes));
 }
 
 void AgentController::sendFollowUp(const QString &text)
@@ -127,6 +132,7 @@ void AgentController::onReply(const QStringList &codeBlocks)
         m_active = true;
 
     m_sinceReply.start();
+    ++m_stepGen;
     ++m_step;
     m_results.clear();
     m_queue.clear();
@@ -161,7 +167,7 @@ void AgentController::skipRemaining(const QString &why)
 
 void AgentController::runNext()
 {
-    if (m_state != State::RunningActions || m_runner.isRunning())
+    if (m_state != State::RunningActions || m_runner.isRunning() || m_busy)
         return;
     if (m_queue.isEmpty()) {
         finishStep();
@@ -211,6 +217,43 @@ void AgentController::runNext()
     switch (a.type) {
     case AgentAction::ReadFile:      record(m_ws.readFile(a)); break;
     case AgentAction::ListDir:       record(m_ws.listDir(a)); break;
+    case AgentAction::Search:
+    case AgentAction::FindFiles: {
+        // Can take seconds on a big project: run on a copy of the workspace
+        // in the background, keep the window responsive.
+        const Workspace ws = m_ws;
+        m_busy = true;
+        const quint64 gen = m_stepGen;
+        auto *watcher = new QFutureWatcher<ActionResult>(this);
+        connect(watcher, &QFutureWatcher<ActionResult>::finished, this, [this, watcher, gen] {
+            watcher->deleteLater();
+            m_busy = false;
+            if (gen != m_stepGen) {
+                // Stopped (or a new step began) meanwhile: drop the result,
+                // but let a step that was waiting for us continue.
+                if (m_state == State::RunningActions)
+                    QTimer::singleShot(0, this, &AgentController::runNext);
+                return;
+            }
+            if (m_state != State::RunningActions)
+                return;
+            record(watcher->result());
+            QTimer::singleShot(0, this, &AgentController::runNext);
+        });
+        watcher->setFuture(QtConcurrent::run([ws, a] {
+            return a.type == AgentAction::Search ? ws.search(a) : ws.findFiles(a);
+        }));
+        return;
+    }
+    case AgentAction::UpdateNotes: {
+        // Only ever AGENT_NOTES.md, so no approval; still undoable.
+        const FileChange before = snapshot(Workspace::notesFileName());
+        const ActionResult r = m_ws.writeNotes(a);
+        if (r.ok)
+            remember(before);
+        record(r);
+        break;
+    }
     case AgentAction::WriteFile: {
         const FileChange before = snapshot(a.path);
         const ActionResult r = m_ws.writeFile(a);
@@ -399,6 +442,7 @@ bool AgentController::undoLast(QString *message)
 void AgentController::stop()
 {
     ++m_sendSerial;
+    ++m_stepGen;
     m_queue.clear();
     m_runner.kill();
     m_active = false;

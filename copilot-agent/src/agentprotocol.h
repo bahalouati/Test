@@ -12,8 +12,10 @@
 namespace AgentProtocol {
 
 // The first message of a task: how to ask for actions, then the task itself.
+// notes: the project's AGENT_NOTES.md, if any, so a new conversation starts
+// with what earlier ones learned.
 QString taskPrompt(const QString &task, const QString &workspaceName,
-                   const QString &platform, const QString &shell);
+                   const QString &platform, const QString &shell, const QString &notes = QString());
 
 // Parses the text of rendered code blocks. Blocks that are not agent JSON
 // (ordinary code Copilot shows while explaining) are skipped silently; blocks

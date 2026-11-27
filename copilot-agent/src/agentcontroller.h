@@ -115,5 +115,7 @@ private:
     QStringList m_notes;        // told to Copilot with the next message
     QByteArray m_lastSignature; // of the previous step, to spot repeats
     int m_failStreak = 0;       // steps in a row where nothing succeeded
+    bool m_busy = false;        // a background search is running
+    quint64 m_stepGen = 0;      // changes on every new step and on stop
     quint64 m_sendSerial = 0;   // invalidates a pending delayed send
 };

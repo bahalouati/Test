@@ -54,8 +54,11 @@ Copilot can and will make mistakes, so the app assumes it will:
 
 | Action            | Asks you first | What it does                                          |
 | ----------------- | -------------- | ----------------------------------------------------- |
-| `list_dir`        | no             | Lists a folder (skips `.git`, `node_modules`, `build*`) |
-| `read_file`       | no             | Reads a file, or a line range of it                   |
+| `search`          | no             | Text or regex search across the project; returns `file:line: text` |
+| `find_files`      | no             | Files whose name (`*.cpp`) or path (`src/**/main*`) matches |
+| `list_dir`        | no             | Lists a folder (skips ignored files and build folders) |
+| `read_file`       | no             | Reads a file, or a line range of it; long files come in parts |
+| `update_notes`    | no, but undoable | Rewrites `AGENT_NOTES.md`, the project notes        |
 | `write_file`      | **yes**, with a diff | Creates or replaces a whole file                |
 | `replace_in_file` | **yes**, with a diff | Replaces one exact, unique snippet               |
 | `run_command`     | **yes**, editable    | Runs a shell command (`bash -c` or `cmd /C`) with a timeout |
@@ -67,6 +70,27 @@ sending anything more.
 
 Paths are resolved inside the project folder only. `..`, absolute paths and symlinks that point
 outside the folder are refused before anything is touched.
+
+## Big projects
+
+- **Search first.** Copilot can search the code and find files by name without asking you,
+  instead of opening files one by one. A search over about 8,000 files takes a fraction of a
+  second. It stops at 100 matches by default (300 at most) and tells Copilot to narrow it with
+  a folder or a file pattern.
+- **Ignored files stay out.** Listings and searches skip whatever the project's `.gitignore`
+  files ignore (the root one, nested ones and `.git/info/exclude`), plus build output,
+  `node_modules`, virtualenvs and IDE folders. Binary files and files over 2 MB are not searched.
+- **Long files come in parts.** Reading a file of more than 600 lines without a range returns
+  its first 400 lines, with a note telling Copilot to ask for line ranges or to search. The
+  instructions also ask Copilot to edit existing files with `replace_in_file` and to keep
+  `write_file` for new or short files, since a long file rewritten in one reply can get cut off.
+- **Project notes carry over.** `AGENT_NOTES.md` in the project folder holds what earlier
+  conversations learned: layout, how to build and test, conventions, what changed. Each new
+  task sends it to Copilot first, and Copilot updates it before finishing. Updating it needs no
+  approval, since it touches nothing else, and **Undo change** reverts it like any other file.
+  This makes it practical to start a fresh Copilot chat for each feature, which keeps Copilot
+  from forgetting things in very long conversations. You can edit the file yourself, and commit
+  it if it's useful to others.
 
 ## Build
 

@@ -240,6 +240,58 @@ private slots:
         QVERIFY(next.contains("I undid your last change to keep.txt"));
     }
 
+    void searchRunsWithoutApproval()
+    {
+        QFile f(m_dir.path() + "/code.cpp");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("void needle() {}\n");
+        f.close();
+        AgentController *c = make(Decision::Reject);   // would reject anything it was asked about
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"search\",\"query\":\"needle\"}", "{\"action\":\"find_files\",\"pattern\":\"*.cpp\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());
+        const QString results = sent.last()[0].toString();
+        QVERIFY2(results.contains("code.cpp:1: void needle() {}"), qPrintable(results));
+        QVERIFY(results.contains("code.cpp  (17 bytes)"));
+    }
+
+    void stopDuringSearchDropsTheResult()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"search\",\"query\":\"x\"}"});
+        c->stop();
+        QTest::qWait(300);
+        QCOMPARE(sent.size(), 1);
+        QCOMPARE(c->state(), State::Idle);
+    }
+
+    void notesAreReadAndWritten()
+    {
+        QFile n(m_dir.path() + "/AGENT_NOTES.md");
+        QVERIFY(n.open(QIODevice::WriteOnly));
+        n.write("# Old notes\nBuild with make.\n");
+        n.close();
+        AgentController *c = make(Decision::Reject, /*autoLoop*/ false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QVERIFY(sent[0][0].toString().contains("Build with make."));
+        c->onReply({"{\"action\":\"update_notes\",\"content\":\"# New notes\"}"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QVERIFY(m_asked.isEmpty());                    // no approval for notes
+        QVERIFY(n.open(QIODevice::ReadOnly));
+        QCOMPARE(n.readAll(), QByteArray("# New notes\n"));
+        n.close();
+        QString msg;
+        QVERIFY(c->canUndo());
+        QVERIFY(c->undoLast(&msg));                    // still undoable
+        QVERIFY(n.open(QIODevice::ReadOnly));
+        QVERIFY(n.readAll().startsWith("# Old notes"));
+    }
+
     void manualModeHoldsResults()
     {
         AgentController *c = make(Decision::Approve, /*autoLoop*/ false);

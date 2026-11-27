@@ -9,6 +9,9 @@ struct AgentAction
     enum Type {
         ReadFile,       // read-only, runs without asking
         ListDir,        // read-only, runs without asking
+        Search,         // read-only: text search across the project
+        FindFiles,      // read-only: files whose name or path matches a glob
+        UpdateNotes,    // rewrites AGENT_NOTES.md; no approval, but undoable
         WriteFile,      // needs approval
         ReplaceInFile,  // needs approval
         RunCommand,     // needs approval
@@ -30,6 +33,11 @@ struct AgentAction
     int startLine = 0;     // read_file, 1-based, 0 means "from the start"
     int endLine = 0;       // read_file, inclusive, 0 means "to the end"
     int depth = 1;         // list_dir
+    QString query;         // search
+    QString glob;          // search filter / find_files pattern
+    bool regex = false;    // search
+    bool caseSensitive = false;   // search
+    int maxResults = 0;    // search / find_files; 0 means "use the default"
     QJsonObject raw;
 
     bool needsApproval() const
