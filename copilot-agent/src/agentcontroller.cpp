@@ -122,9 +122,55 @@ void AgentController::startTask(const QString &task)
                  ? tr("Picked files: %1. Only these may be changed.").arg(m_focus.join(QStringLiteral(", ")))
                  : tr("Picked files: %1.").arg(m_focus.join(QStringLiteral(", "))));
 
-    send(taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
-                    CommandRunner::shellName(), notes, focusSection(focus, onlyFocusFiles()),
-                    !onlyFocusFiles()));
+    QString prompt = taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
+                                CommandRunner::shellName(), notes, focusSection(focus, onlyFocusFiles()),
+                                !onlyFocusFiles());
+    m_phase = m_planFirst ? Phase::Planning : Phase::Normal;
+    if (m_phase == Phase::Planning) {
+        prompt += QStringLiteral("\n\n") + planFirstInstructions();
+        emit log(LogKind::Info, tr("Plan first: Copilot can only read until you approve its plan."));
+    }
+    send(prompt);
+}
+
+void AgentController::startReview(const QString &prompt, const Git::Target &target)
+{
+    if (!m_ws.isValid()) {
+        emit log(LogKind::Error, tr("Choose a project folder first."));
+        return;
+    }
+    stop();
+    m_active = true;
+    m_step = 0;
+    m_lastSignature.clear();
+    m_failStreak = 0;
+    m_notes.clear();
+    m_diffTarget = target;
+    m_phase = Phase::Review;
+    emit log(LogKind::Info, tr("Review of %1. Read-only: nothing will be changed.").arg(target.describe()));
+    send(prompt);
+}
+
+QStringList AgentController::changedFiles() const
+{
+    QStringList out;
+    for (const FileChange &c : m_undo)
+        if (!out.contains(c.path))
+            out << c.path;
+    return out;
+}
+
+QString AgentController::refusalFor(const AgentAction &a) const
+{
+    const bool reading = a.type == AgentAction::ReadFile || a.type == AgentAction::ListDir
+                      || a.type == AgentAction::Search || a.type == AgentAction::FindFiles
+                      || a.type == AgentAction::ShowDiff || a.type == AgentAction::Done;
+    if (m_phase == Phase::Planning && !reading && a.type != AgentAction::ProposePlan)
+        return QStringLiteral("not yet: this task starts with a plan. Use the reading steps, then send propose_plan; "
+                              "changes and commands become possible once I approve it");
+    if (m_phase == Phase::Review && !reading && a.type != AgentAction::ReportFindings)
+        return QStringLiteral("this is a review, so only the reading steps are possible; report problems with report_findings");
+    return QString();
 }
 
 void AgentController::sendFollowUp(const QString &text)
@@ -227,6 +273,79 @@ void AgentController::runNext()
         m_doneSeen = true;
         m_doneSummary = a.summary;
         skipRemaining(QStringLiteral("skipped: came after done"));
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+
+    // Plan first / review: only reading until allowed.
+    const QString phaseRefusal = refusalFor(a);
+    if (!phaseRefusal.isEmpty()) {
+        ActionResult r;
+        r.action = a;
+        r.status = QStringLiteral("refused: ") + phaseRefusal;
+        record(r);
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+
+    if (a.type == AgentAction::ProposePlan) {
+        QString note;
+        const PlanDecision d = m_planApprover ? m_planApprover(a.content, &note) : PlanDecision::Approve;
+        ActionResult r;
+        r.action = a;
+        if (d == PlanDecision::Stop) {
+            emit log(LogKind::Info, tr("Stopped by you at the plan."));
+            stop();
+            return;
+        }
+        if (d == PlanDecision::Approve) {
+            m_phase = Phase::Normal;
+            r.ok = true;
+            r.status = note.trimmed().isEmpty()
+                ? QStringLiteral("plan approved: please go ahead")
+                : QStringLiteral("plan approved, with a note from me: ") + note.trimmed();
+            emit log(LogKind::Info, tr("Plan approved. Copilot can now make changes (each still needs your approval)."));
+        } else {
+            r.ok = true;
+            r.status = QStringLiteral("I'd like changes to the plan: ") + note.trimmed()
+                     + QStringLiteral(". Please send an updated plan");
+        }
+        record(r);
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+    if (a.type == AgentAction::ReportFindings) {
+        emit findingsReported(a.findings);
+        ActionResult r;
+        r.action = a;
+        r.ok = true;
+        r.status = QStringLiteral("received %1 findings, thank you").arg(a.findings.size());
+        record(r);
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+    if (a.type == AgentAction::ShowDiff) {
+        ActionResult r;
+        r.action = a;
+        QString err;
+        if (!Git::isRepo(m_ws.root())) {
+            r.status = QStringLiteral("error: the project folder is not a git repository");
+        } else {
+            QString path;
+            if (!a.path.isEmpty() && a.path != QLatin1String(".")) {
+                const QString abs = m_ws.resolve(a.path, &err);
+                path = abs.isEmpty() ? QString() : QDir(m_ws.root()).relativeFilePath(abs);
+            }
+            if (!a.path.isEmpty() && a.path != QLatin1String(".") && path.isEmpty()) {
+                r.status = QStringLiteral("error: ") + err;
+            } else {
+                r.output = Git::diff(m_ws.root(), m_diffTarget, path, &err);
+                r.ok = err.isEmpty();
+                r.status = !err.isEmpty() ? QStringLiteral("error: ") + err
+                         : r.output.isEmpty() ? QStringLiteral("no changes") : QStringLiteral("ok");
+            }
+        }
+        record(r);
         QTimer::singleShot(0, this, &AgentController::runNext);
         return;
     }
@@ -532,6 +651,7 @@ bool AgentController::undoLast(QString *message)
 
 void AgentController::stop()
 {
+    m_phase = Phase::Normal;
     ++m_sendSerial;
     ++m_stepGen;
     m_queue.clear();

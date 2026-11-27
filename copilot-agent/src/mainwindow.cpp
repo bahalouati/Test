@@ -6,12 +6,16 @@
 #include "linediff.h"
 #include "officefile.h"
 #include "edgesession.h"
+#include "jiraissue.h"
+#include "jiraconnection.h"
+#include "dialogs.h"
 #include "webenginetransport.h"
 #include "webpage.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
@@ -24,6 +28,9 @@
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QUrl>
+#include <QInputDialog>
+#include <QProcess>
+#include <QDialogButtonBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -42,6 +49,8 @@
 #include <QWebEngineProfile>
 #include <QWebEngineView>
 
+#include <memory>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -49,6 +58,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_settings = AppSettings::load();
     m_agent = new AgentController(this);
     m_agent->setApprover([this](AgentAction &a, QString *note) { return approve(a, note); });
+    m_jira = new JiraConn::Client(this);
 
     buildUi();
     wire();
@@ -69,6 +79,12 @@ MainWindow::MainWindow(QWidget *parent)
                      "to the clipboard for you to paste; copy Copilot's reply back and press \"Paste reply\".")
                       .arg(m_settings.url));
     }
+    {
+        const QSignalBlocker b1(m_mode), b2(m_planFirst);
+        m_mode->setCurrentIndex(qBound(0, QSettings().value(QStringLiteral("taskMode"), 0).toInt(), 2));
+        m_planFirst->setChecked(QSettings().value(QStringLiteral("planFirst"), false).toBool());
+    }
+    applyMode();
     updateButtons();
 }
 
@@ -192,6 +208,71 @@ void MainWindow::buildUi()
 
     auto *taskBox = new QGroupBox(tr("Task"), panel);
     auto *tl = new QVBoxLayout(taskBox);
+
+    // What kind of work: a free task, a Jira ticket, or a review.
+    auto *modeRow = new QHBoxLayout;
+    modeRow->addWidget(new QLabel(tr("Mode:"), taskBox));
+    m_mode = new QComboBox(taskBox);
+    m_mode->addItem(tr("Task"), int(TaskMode));
+    m_mode->addItem(tr("Jira issue"), int(JiraMode));
+    m_mode->addItem(tr("Review"), int(ReviewMode));
+    m_mode->setToolTip(tr("Task: describe what to do. Jira issue: the ticket is the task. Review: read-only review of changes."));
+    modeRow->addWidget(m_mode);
+    m_planFirst = new QCheckBox(tr("Plan first"), taskBox);
+    m_planFirst->setToolTip(tr("Copilot only reads and searches, then proposes a plan; it can change things once you approve it"));
+    modeRow->addSpacing(12);
+    modeRow->addWidget(m_planFirst);
+    modeRow->addStretch();
+    tl->addLayout(modeRow);
+
+    m_jiraRow = new QWidget(taskBox);
+    auto *jl = new QVBoxLayout(m_jiraRow);
+    jl->setContentsMargins(0, 0, 0, 0);
+    auto *jr = new QHBoxLayout;
+    m_jiraKey = new QLineEdit(m_jiraRow);
+    m_jiraKey->setPlaceholderText(tr("Ticket key, e.g. PROJ-123 (or paste its link)"));
+    auto *loadBtn = new QPushButton(tr("Load"), m_jiraRow);
+    auto *jiraSettings = new QPushButton(tr("Jira settings..."), m_jiraRow);
+    jr->addWidget(m_jiraKey, 1);
+    jr->addWidget(loadBtn);
+    jr->addWidget(jiraSettings);
+    jl->addLayout(jr);
+    m_jiraInfo = new QLabel(m_jiraRow);
+    m_jiraInfo->setWordWrap(true);
+    m_jiraInfo->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    m_jiraInfo->setOpenExternalLinks(true);
+    jl->addWidget(m_jiraInfo);
+    tl->addWidget(m_jiraRow);
+    connect(loadBtn, &QPushButton::clicked, this, [this] {
+        const QString key = JiraConn::issueKeyFrom(m_jiraKey->text());
+        if (key.isEmpty()) {
+            appendLog(AgentController::LogKind::Error, tr("That is not a Jira issue key like PROJ-123."));
+            return;
+        }
+        loadJira(key, [] {});
+    });
+    connect(m_jiraKey, &QLineEdit::returnPressed, loadBtn, &QPushButton::click);
+    connect(jiraSettings, &QPushButton::clicked, this, &MainWindow::openJiraSettings);
+
+    m_reviewRow = new QWidget(taskBox);
+    auto *rr = new QHBoxLayout(m_reviewRow);
+    rr->setContentsMargins(0, 0, 0, 0);
+    rr->addWidget(new QLabel(tr("Review:"), m_reviewRow));
+    m_reviewTarget = new QComboBox(m_reviewRow);
+    m_reviewTarget->addItem(tr("Uncommitted changes"), int(Git::Target::Uncommitted));
+    m_reviewTarget->addItem(tr("Last commit"), int(Git::Target::LastCommit));
+    m_reviewTarget->addItem(tr("This branch compared with"), int(Git::Target::Branch));
+    rr->addWidget(m_reviewTarget);
+    m_reviewBase = new QLineEdit(m_reviewRow);
+    m_reviewBase->setPlaceholderText(tr("main"));
+    m_reviewBase->setMaximumWidth(160);
+    rr->addWidget(m_reviewBase);
+    rr->addStretch();
+    tl->addWidget(m_reviewRow);
+    connect(m_reviewTarget, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+        m_reviewBase->setVisible(m_reviewTarget->currentData().toInt() == int(Git::Target::Branch));
+    });
+
     m_task = new QPlainTextEdit(taskBox);
     m_task->setPlaceholderText(tr("What should Copilot build or change?\n"
                                   "e.g. \"Add a --verbose flag to the CLI and a test for it.\"\n\n"
@@ -313,10 +394,26 @@ void MainWindow::wire()
         m_address->setText(u.toString());
     });
 
-    connect(m_start, &QPushButton::clicked, this, [this] {
-        m_agent->startTask(m_task->toPlainText());
-        if (m_agent->taskActive())
-            m_task->clear();
+    connect(m_start, &QPushButton::clicked, this, &MainWindow::startClicked);
+    connect(m_mode, qOverload<int>(&QComboBox::currentIndexChanged), this, [this] {
+        QSettings().setValue(QStringLiteral("taskMode"), m_mode->currentIndex());
+        applyMode();
+    });
+    connect(m_planFirst, &QCheckBox::toggled, this, [](bool on) { QSettings().setValue(QStringLiteral("planFirst"), on); });
+    m_agent->setPlanApprover([this](const QString &plan, QString *note) {
+        QApplication::alert(this);
+        PlanDialog d(plan, this);
+        d.exec();
+        *note = d.note();
+        if (d.decision() == AgentController::PlanDecision::Stop)
+            m_bridge->cancel();
+        return d.decision();
+    });
+    connect(m_agent, &AgentController::findingsReported, this, [this](const QJsonArray &findings) {
+        appendLog(AgentController::LogKind::Done, tr("Review findings: %1. The list is open in its own window.").arg(findings.size()));
+        auto *d = new FindingsDialog(findings, m_reviewDescription.isEmpty() ? tr("the changes") : m_reviewDescription, this);
+        d->setAttribute(Qt::WA_DeleteOnClose);
+        d->show();
     });
     connect(m_followUp, &QPushButton::clicked, this, [this] {
         const QString t = m_task->toPlainText();
@@ -370,7 +467,8 @@ void MainWindow::wire()
     connect(m_agent, &AgentController::taskFinished, this, [this](const QString &summary) {
         QApplication::alert(this);
         statusBar()->showMessage(tr("Task done"), 10000);
-        Q_UNUSED(summary);
+        if (!m_activeJiraKey.isEmpty())
+            QTimer::singleShot(0, this, [this, summary] { jiraWrapUp(summary); });
     });
 
     connect(m_bridge, &CopilotBridge::sent, this, [this] {
@@ -744,4 +842,324 @@ void MainWindow::syncFocusFiles()
     m_agent->setFocusFiles(rels, m_onlyFiles->isChecked());
     m_onlyFiles->setEnabled(!rels.isEmpty());
     updateButtons();
+}
+
+// ------------------------------------------------------------------ modes
+
+MainWindow::Mode MainWindow::mode() const
+{
+    return Mode(m_mode->currentData().toInt());
+}
+
+void MainWindow::applyMode()
+{
+    const Mode m = mode();
+    m_jiraRow->setVisible(m == JiraMode);
+    m_reviewRow->setVisible(m == ReviewMode);
+    m_reviewBase->setVisible(m_reviewTarget->currentData().toInt() == int(Git::Target::Branch));
+    m_planFirst->setVisible(m != ReviewMode);
+    switch (m) {
+    case TaskMode:
+        m_start->setText(tr("Start task"));
+        m_task->setPlaceholderText(tr("What should Copilot build or change?\n"
+                                      "e.g. \"Add a --verbose flag to the CLI and a test for it.\"\n\n"
+                                      "While a task runs, type here and press Send to answer Copilot."));
+        break;
+    case JiraMode:
+        m_start->setText(tr("Start ticket"));
+        m_task->setPlaceholderText(tr("Optional: your own notes for this ticket (scope, hints, what to skip).\n\n"
+                                      "While it runs, type here and press Send to answer Copilot."));
+        break;
+    case ReviewMode:
+        m_start->setText(tr("Start review"));
+        m_task->setPlaceholderText(tr("Optional: what to focus on (e.g. \"thread safety\", \"the new parser\").\n\n"
+                                      "Nothing is changed in a review: Copilot only reads."));
+        break;
+    }
+}
+
+void MainWindow::startClicked()
+{
+    switch (mode()) {
+    case TaskMode:   startPlainTask(); break;
+    case JiraMode:   startJiraTask(); break;
+    case ReviewMode: startReview(); break;
+    }
+}
+
+void MainWindow::startPlainTask()
+{
+    m_activeJiraKey.clear();
+    m_agent->setPlanFirst(m_planFirst->isChecked());
+    m_agent->startTask(m_task->toPlainText());
+    if (m_agent->taskActive())
+        m_task->clear();
+}
+
+// ------------------------------------------------------------------- Jira
+
+void MainWindow::openJiraSettings()
+{
+    JiraSettingsDialog d(JiraConn::Credentials::load(), this);
+    if (d.exec() == QDialog::Accepted) {
+        d.credentials().save();
+        appendLog(AgentController::LogKind::Info, tr("Jira settings saved."));
+    }
+}
+
+void MainWindow::loadJira(const QString &key, std::function<void()> then)
+{
+    JiraConn::Credentials creds = JiraConn::Credentials::load();
+    if (!creds.isComplete()) {
+        openJiraSettings();
+        creds = JiraConn::Credentials::load();
+        if (!creds.isComplete()) {
+            appendLog(AgentController::LogKind::Error, tr("Jira is not set up yet: open \"Jira settings...\"."));
+            return;
+        }
+    }
+    m_jira->setCredentials(creds);
+    m_jiraInfo->setText(tr("Loading %1...").arg(key));
+    m_jira->fetchIssue(key, [this, key, then](const QJsonValue &body, const QString &error) {
+        if (!error.isEmpty()) {
+            m_jiraInfo->setText(tr("Could not load %1.").arg(key));
+            appendLog(AgentController::LogKind::Error, tr("Jira: %1").arg(error));
+            return;
+        }
+        m_jiraIssue = body.toObject();
+        m_jiraAttachments.clear();
+        const JiraIssue::Brief b = JiraIssue::briefOf(m_jiraIssue);
+        const QString link = m_jira->browseUrl(b.key).toString();
+        m_jiraInfo->setText(QStringLiteral("<a href=\"%1\">%2</a>").arg(link.toHtmlEscaped(), b.line().toHtmlEscaped()));
+
+        // Readable attachments (Word, Excel, text) are downloaded and their
+        // text goes into the task.
+        const QVector<JiraIssue::Attachment> atts = JiraIssue::readableAttachments(m_jiraIssue);
+        if (atts.isEmpty()) {
+            appendLog(AgentController::LogKind::Info, tr("Loaded %1.").arg(b.line()));
+            then();
+            return;
+        }
+        auto remaining = std::make_shared<int>(int(atts.size()));
+        for (const JiraIssue::Attachment &a : atts) {
+            m_jira->download(a.url, 5 * 1024 * 1024, [this, a, remaining, b, then](const QByteArray &bytes, const QString &err) {
+                if (err.isEmpty())
+                    m_jiraAttachments.insert(a.name, JiraIssue::attachmentText(a.name, bytes));
+                else
+                    appendLog(AgentController::LogKind::Error, tr("Attachment %1 not read: %2").arg(a.name, err));
+                if (--*remaining == 0) {
+                    appendLog(AgentController::LogKind::Info, tr("Loaded %1 with %2 readable attachment(s).")
+                                  .arg(b.line()).arg(m_jiraAttachments.size()));
+                    then();
+                }
+            });
+        }
+    });
+}
+
+void MainWindow::startJiraTask()
+{
+    const QString key = JiraConn::issueKeyFrom(m_jiraKey->text());
+    if (key.isEmpty()) {
+        appendLog(AgentController::LogKind::Error, tr("Enter a Jira issue key like PROJ-123 first."));
+        m_jiraKey->setFocus();
+        return;
+    }
+    if (!m_agent->workspace().isValid()) {
+        appendLog(AgentController::LogKind::Error, tr("Choose a project folder first."));
+        return;
+    }
+    auto go = [this, key] {
+        if (!createJiraBranch())
+            return;
+        m_activeJiraKey = key;
+        m_agent->setPlanFirst(m_planFirst->isChecked());
+        m_agent->startTask(JiraIssue::toTask(m_jiraIssue, m_jiraAttachments, m_task->toPlainText()));
+        if (m_agent->taskActive())
+            m_task->clear();
+    };
+    if (JiraIssue::briefOf(m_jiraIssue).key == key)
+        go();
+    else
+        loadJira(key, go);
+}
+
+static Git::Result runShell(const QString &command, const QString &dir)
+{
+    // The user may have edited the command in the approval dialog: run it as typed.
+    Git::Result r;
+    QProcess p;
+    p.setWorkingDirectory(dir);
+    p.setStandardInputFile(QProcess::nullDevice());
+#ifdef Q_OS_WIN
+    p.setProgram(QStringLiteral("cmd.exe"));
+    p.setNativeArguments(QStringLiteral("/D /S /C \"") + command + QLatin1Char('"'));
+#else
+    p.setProgram(QStringLiteral("/bin/sh"));
+    p.setArguments({QStringLiteral("-c"), command});
+#endif
+    p.start();
+    if (!p.waitForFinished(30000)) {
+        p.kill();
+        r.err = QStringLiteral("timed out");
+        return r;
+    }
+    r.exitCode = p.exitCode();
+    r.out = QString::fromLocal8Bit(p.readAllStandardOutput());
+    r.err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed();
+    r.ok = r.exitCode == 0;
+    return r;
+}
+
+bool MainWindow::createJiraBranch()
+{
+    const QString root = m_agent->workspace().root();
+    m_jiraBranch.clear();
+    if (!Git::isRepo(root)) {
+        appendLog(AgentController::LogKind::Info, tr("The project folder is not a git repository, so no branch was created."));
+        return true;
+    }
+    const JiraIssue::Brief b = JiraIssue::briefOf(m_jiraIssue);
+    const QString name = Git::branchNameFor(b.key, b.summary);
+    if (Git::currentBranch(root) == name) {
+        m_jiraBranch = name;
+        appendLog(AgentController::LogKind::Info, tr("Already on branch %1.").arg(name));
+        return true;
+    }
+    AgentAction cmd;
+    cmd.type = AgentAction::RunCommand;
+    cmd.command = Git::branchExists(root, name) ? QStringLiteral("git checkout ") + name
+                                                : QStringLiteral("git checkout -b ") + name;
+    QString note;
+    const AgentController::Decision d = approve(cmd, &note);
+    if (d == AgentController::Decision::Stop)
+        return false;
+    if (d == AgentController::Decision::Reject) {
+        appendLog(AgentController::LogKind::Info, tr("No branch created; working on %1.").arg(Git::currentBranch(root)));
+        return true;
+    }
+    const Git::Result r = runShell(cmd.command, root);
+    if (!r.ok) {
+        appendLog(AgentController::LogKind::Error, tr("The branch command failed: %1").arg(r.err.isEmpty() ? r.out : r.err));
+        return QMessageBox::question(this, tr("Branch"), tr("Creating the branch failed. Start the ticket anyway on %1?")
+                                         .arg(Git::currentBranch(root))) == QMessageBox::Yes;
+    }
+    m_jiraBranch = Git::currentBranch(root);
+    appendLog(AgentController::LogKind::Result, tr("On branch %1.").arg(m_jiraBranch));
+    return true;
+}
+
+void MainWindow::jiraWrapUp(const QString &summary)
+{
+    const QString key = m_activeJiraKey;
+    m_activeJiraKey.clear();
+    if (key.isEmpty())
+        return;
+
+    // 1. A comment on the ticket, edited by the user before it is posted.
+    QDialog d(this);
+    d.setWindowTitle(tr("Post to %1?").arg(key));
+    d.resize(640, 420);
+    auto *lay = new QVBoxLayout(&d);
+    auto *label = new QLabel(tr("The task is done. Post this comment on %1? Edit it first if you like.").arg(key), &d);
+    label->setWordWrap(true);
+    lay->addWidget(label);
+    auto *text = new QPlainTextEdit(JiraIssue::wrapUpComment(summary, m_agent->changedFiles(), m_jiraBranch), &d);
+    lay->addWidget(text, 1);
+    auto *buttons = new QDialogButtonBox(&d);
+    auto *post = buttons->addButton(tr("Post comment"), QDialogButtonBox::AcceptRole);
+    buttons->addButton(tr("Skip"), QDialogButtonBox::RejectRole);
+    post->setDefault(true);
+    lay->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    if (d.exec() != QDialog::Accepted || text->toPlainText().trimmed().isEmpty()) {
+        appendLog(AgentController::LogKind::Info, tr("Nothing posted to %1.").arg(key));
+        return;
+    }
+    m_jira->addComment(key, text->toPlainText().trimmed(), [this, key](const QJsonValue &, const QString &error) {
+        if (!error.isEmpty()) {
+            appendLog(AgentController::LogKind::Error, tr("Could not post the comment on %1: %2").arg(key, error));
+            return;
+        }
+        appendLog(AgentController::LogKind::Result, tr("Comment posted on %1.").arg(key));
+
+        // 2. Optionally move the ticket on, using the transitions Jira allows.
+        m_jira->fetchTransitions(key, [this, key](const QVector<JiraConn::Transition> &ts, const QString &err) {
+            if (!err.isEmpty() || ts.isEmpty()) {
+                if (!err.isEmpty())
+                    appendLog(AgentController::LogKind::Error, tr("Could not read %1's possible statuses: %2").arg(key, err));
+                return;
+            }
+            QStringList items{tr("Keep the current status")};
+            for (const JiraConn::Transition &t : ts)
+                items << (t.toStatus.isEmpty() || t.toStatus == t.name ? t.name : QStringLiteral("%1 (to %2)").arg(t.name, t.toStatus));
+            bool ok = false;
+            const QString choice = QInputDialog::getItem(this, tr("Move %1?").arg(key),
+                                                         tr("Move the ticket to another status?"), items, 0, false, &ok);
+            const int index = items.indexOf(choice) - 1;
+            if (!ok || index < 0)
+                return;
+            const JiraConn::Transition t = ts.at(index);
+            m_jira->applyTransition(key, t.id, [this, key, t](const QJsonValue &, const QString &e) {
+                if (!e.isEmpty())
+                    appendLog(AgentController::LogKind::Error, tr("Could not move %1: %2").arg(key, e));
+                else
+                    appendLog(AgentController::LogKind::Result, tr("%1 moved: %2.").arg(key, t.name));
+            });
+        });
+    });
+}
+
+// ----------------------------------------------------------------- review
+
+Git::Target MainWindow::reviewTarget() const
+{
+    Git::Target t;
+    t.kind = Git::Target::Kind(m_reviewTarget->currentData().toInt());
+    if (t.kind == Git::Target::Branch) {
+        t.base = m_reviewBase->text().trimmed();
+        if (t.base.isEmpty())
+            t.base = Git::defaultBase(m_agent->workspace().root());
+    }
+    return t;
+}
+
+void MainWindow::startReview()
+{
+    const QString root = m_agent->workspace().root();
+    if (!m_agent->workspace().isValid()) {
+        appendLog(AgentController::LogKind::Error, tr("Choose a project folder first."));
+        return;
+    }
+    if (!Git::isRepo(root)) {
+        appendLog(AgentController::LogKind::Error, tr("A review compares changes with git, and this project folder is not a git repository."));
+        return;
+    }
+    const Git::Target target = reviewTarget();
+    if (target.kind == Git::Target::Branch && target.base.isEmpty()) {
+        appendLog(AgentController::LogKind::Error, tr("Enter the branch to compare with (e.g. main)."));
+        m_reviewBase->setFocus();
+        return;
+    }
+    QString err;
+    const QString stat = Git::diffStat(root, target, &err);
+    if (!err.isEmpty()) {
+        appendLog(AgentController::LogKind::Error, tr("git: %1").arg(err));
+        return;
+    }
+    const QString fullDiff = Git::diff(root, target);
+    const QStringList untracked = target.kind == Git::Target::Uncommitted ? Git::untrackedFiles(root) : QStringList();
+    if (fullDiff.trimmed().isEmpty() && untracked.isEmpty()) {
+        appendLog(AgentController::LogKind::Info, tr("Nothing to review: %1 has no changes.").arg(target.describe()));
+        return;
+    }
+    m_activeJiraKey.clear();
+    m_reviewDescription = target.describe();
+    m_agent->setDiffTarget(target);
+    m_agent->startReview(AgentProtocol::reviewPrompt(target.describe(), QFileInfo(root).fileName(), stat, fullDiff,
+                                                     untracked, m_task->toPlainText()),
+                         target);
+    if (m_agent->taskActive())
+        m_task->clear();
 }

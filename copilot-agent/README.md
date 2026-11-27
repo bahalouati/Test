@@ -60,6 +60,9 @@ Copilot can and will make mistakes, so the app assumes it will:
 | `read_file`       | no             | Reads a file, or a line range of it; long files come in parts |
 | `update_notes`    | no, but undoable | Rewrites `AGENT_NOTES.md`, the project notes        |
 | `set_cells`       | **yes**, with a preview | Sets Excel cells (values, `=formulas`, `null` to empty) |
+| `show_diff`       | no             | The diff under review, or of a file (git)             |
+| `propose_plan`    | the plan, yes  | Plan first: the plan you approve before any change    |
+| `report_findings` | no             | Review: the list of findings                          |
 | `write_file`      | **yes**, with a diff | Creates or replaces a whole file                |
 | `replace_in_file` | **yes**, with a diff | Replaces one exact, unique snippet               |
 | `run_command`     | **yes**, editable    | Runs a shell command (`bash -c` or `cmd /C`) with a timeout |
@@ -71,6 +74,41 @@ sending anything more.
 
 Paths are resolved inside the project folder only. `..`, absolute paths and symlinks that point
 outside the folder are refused before anything is touched.
+
+## Modes: Task, Jira issue, Review
+
+The **Mode** selector at the top of the Task box picks the kind of work. **Task** is the
+default and needs no ticket: describe what to do, as always.
+
+**Jira issue**: type a ticket key (`PROJ-123`, or paste its link) and press **Load**.
+- **The ticket becomes the task:** summary, type, status, labels, components, fix versions,
+  description, text custom fields found by name (acceptance criteria, steps to reproduce), the
+  latest comments, and readable attachments (Word, Excel and text files up to 5 MB). Your own
+  notes in the task box go along with it.
+- **Branch:** **Start ticket** first offers to create and switch to a branch like
+  `PROJ-123-short-title`, shown as a command you approve or edit. Reject it to stay on the
+  current branch.
+- **Wrap-up:** when Copilot finishes, the app drafts a comment for the ticket (summary, changed
+  files, branch). You edit it, then **Post comment** or **Skip**. After posting, it offers to
+  move the ticket to any status Jira allows from there (for example, In Review), or to keep
+  the current one.
+- **Connection:** **Jira settings...** holds the server URL, the sign-in type, the user and the
+  token, plus an optional company CA certificate. Server and Data Center use a personal access
+  token; Cloud uses e-mail and API token. These are the same settings as JiraDesk
+  (`qt-jira-client`): if JiraDesk is set up on the computer, its connection is used.
+  `JIRA_BASE_URL`, `JIRA_USER` (or `JIRA_EMAIL`), `JIRA_API_TOKEN` and `JIRA_AUTH_MODE` override
+  them. The token is saved only if you tick "Remember the token".
+
+**Plan first** (a checkbox, for Task and Jira issue): Copilot may only read and search until it
+sends a plan. You **Approve plan**, **Ask for changes** with a note (Copilot sends an updated
+plan), or **Stop agent**. After approval, every change still needs your approval as usual.
+
+**Review**: a read-only review of the **uncommitted changes**, the **last commit**, or **this
+branch compared with** another branch (`main` if left empty). The app runs git itself and gives
+Copilot the change summary and, when it fits, the whole diff; otherwise Copilot asks for it
+file by file. Copilot can only read, and reports its findings at the end. They open in their
+own window, most severe first, with the details of each and **Copy as text**. Write what to
+focus on in the task box.
 
 ## Word and Excel files
 

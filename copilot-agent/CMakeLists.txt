@@ -44,6 +44,8 @@ add_library(agentcore STATIC
     src/workspace.h          src/workspace.cpp
     src/ignorerules.h        src/ignorerules.cpp
     src/officefile.h         src/officefile.cpp
+    src/git.h                src/git.cpp
+    src/jiraissue.h          src/jiraissue.cpp
     src/linediff.h           src/linediff.cpp
     src/commandrunner.h      src/commandrunner.cpp
     src/agentcontroller.h    src/agentcontroller.cpp
@@ -66,6 +68,7 @@ target_link_libraries(agentweb PUBLIC agentcore Qt5::WebEngineCore Qt5::WebEngin
 
 add_library(agentedge STATIC
     src/edgesession.h        src/edgesession.cpp
+    src/jiraconnection.h     src/jiraconnection.cpp
 )
 target_include_directories(agentedge PUBLIC src)
 target_link_libraries(agentedge PUBLIC Qt5::Core Qt5::Network Qt5::WebSockets)
@@ -76,6 +79,7 @@ add_executable(copilot-agent WIN32 MACOSX_BUNDLE
     src/approvaldialog.h     src/approvaldialog.cpp
     src/settingsdialog.h     src/settingsdialog.cpp
     src/webpage.h            src/webpage.cpp
+    src/dialogs.h            src/dialogs.cpp
 )
 target_link_libraries(copilot-agent PRIVATE
     agentcore agentweb agentedge Qt5::Widgets Qt5::WebEngineWidgets)
@@ -88,7 +92,7 @@ if(COPILOTAGENT_BUILD_TESTS)
     enable_testing()
     find_package(Qt5 REQUIRED COMPONENTS Test)
 
-    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller tst_office)
+    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller tst_office tst_git)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE agentcore Qt5::Test)
         add_test(NAME ${name} COMMAND ${name})
@@ -96,6 +100,13 @@ if(COPILOTAGENT_BUILD_TESTS)
     foreach(name tst_office tst_agentcontroller)
         target_compile_definitions(${name} PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
     endforeach()
+
+    # Jira: ticket -> task, credentials, and the REST client against a fake
+    # Jira served by the test itself (no network).
+    add_executable(tst_jira tests/tst_jira.cpp)
+    target_link_libraries(tst_jira PRIVATE agentedge agentcore Qt5::Test)
+    target_compile_definitions(tst_jira PRIVATE FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    add_test(NAME tst_jira COMMAND tst_jira)
 
     # Drives the real JS bridge against a local mock of the Copilot page.
     # Needs a Chromium that can start, so it is opt-in for headless CI.

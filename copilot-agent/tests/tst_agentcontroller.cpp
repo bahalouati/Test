@@ -1,6 +1,8 @@
 #include "agentcontroller.h"
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -377,6 +379,77 @@ private slots:
         QVERIFY(c->undoLast(&msg));
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), original);                 // byte for byte
+    }
+
+    void planFirstBlocksChangesUntilApproved()
+    {
+        AgentController *c = make(Decision::Approve);
+        QStringList plansSeen;
+        QList<AgentController::PlanDecision> answers{AgentController::PlanDecision::Revise, AgentController::PlanDecision::Approve};
+        c->setPlanApprover([&](const QString &plan, QString *note) {
+            plansSeen << plan;
+            const auto d = answers.takeFirst();
+            *note = d == AgentController::PlanDecision::Revise ? QStringLiteral("also add a test") : QString();
+            return d;
+        });
+        c->setPlanFirst(true);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QVERIFY(sent[0][0].toString().contains("propose_plan"));
+        QCOMPARE(c->phase(), AgentController::Phase::Planning);
+
+        // A change before the plan is refused without asking.
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"a.txt\",\"content\":\"x\"}",
+                    "{\"action\":\"list_dir\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());
+        QVERIFY(!QFile::exists(m_dir.path() + "/a.txt"));
+        QVERIFY(sent.last()[0].toString().contains("refused: not yet: this task starts with a plan"));
+
+        // First plan: changes requested.
+        c->onReply({"{\"action\":\"propose_plan\",\"plan\":\"Edit a.txt\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(sent.last()[0].toString().contains("I'd like changes to the plan: also add a test"));
+        QCOMPARE(c->phase(), AgentController::Phase::Planning);
+
+        // Second plan: approved; changes now go through the normal approval.
+        c->onReply({"{\"action\":\"propose_plan\",\"plan\":\"Edit a.txt and add a test\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(plansSeen.size(), 2);
+        QCOMPARE(c->phase(), AgentController::Phase::Normal);
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"a.txt\",\"content\":\"x\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(m_asked, QStringList{"a.txt"});
+        QVERIFY(QFile::exists(m_dir.path() + "/a.txt"));
+    }
+
+    void reviewIsReadOnlyAndReportsFindings()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy findings(c, &AgentController::findingsReported);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startReview("review please", Git::Target());
+        QCOMPARE(c->phase(), AgentController::Phase::Review);
+        c->onReply({"{\"action\":\"run_command\",\"command\":\"echo hi\"}",
+                    "{\"action\":\"report_findings\",\"findings\":[{\"file\":\"a.cpp\",\"line\":3,\"severity\":\"high\",\"title\":\"Leak\"}]}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());
+        QVERIFY(sent.last()[0].toString().contains("this is a review, so only the reading steps are possible"));
+        QCOMPARE(findings.size(), 1);
+        QCOMPARE(findings[0][0].toJsonArray().first().toObject().value("title").toString(), QStringLiteral("Leak"));
+        // Stopping leaves review mode.
+        c->stop();
+        QCOMPARE(c->phase(), AgentController::Phase::Normal);
+    }
+
+    void showDiffNeedsGit()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"show_diff\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(sent.last()[0].toString().contains("not a git repository"));
     }
 
     void manualModeHoldsResults()
