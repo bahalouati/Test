@@ -221,6 +221,47 @@ private slots:
         QVERIFY(parseBlocks(extractFencedBlocks(with)).isEmpty());
     }
 
+    void parsesPlanReviewActions()
+    {
+        const QList<AgentAction> a = parseBlocks({
+            "{\"action\":\"propose_plan\",\"plan\":\"1. Read\\n2. Fix\"}",
+            "{\"action\":\"report_findings\",\"findings\":[{\"file\":\"a.cpp\",\"line\":3}]}",
+            "{\"action\":\"report_findings\",\"findings\":[]}",
+            "{\"action\":\"show_diff\",\"path\":\"src/a.cpp\"}",
+            "{\"action\":\"propose_plan\"}",
+            "{\"action\":\"report_findings\"}",
+        });
+        QCOMPARE(a.size(), 6);
+        QCOMPARE(a[0].type, AgentAction::ProposePlan);
+        QCOMPARE(a[0].content, QStringLiteral("1. Read\n2. Fix"));
+        QCOMPARE(a[1].type, AgentAction::ReportFindings);
+        QCOMPARE(a[1].findings.size(), 1);
+        QCOMPARE(a[2].type, AgentAction::ReportFindings);   // an empty list is a valid "nothing found"
+        QCOMPARE(a[3].type, AgentAction::ShowDiff);
+        QCOMPARE(a[3].path, QStringLiteral("src/a.cpp"));
+        QCOMPARE(a[4].type, AgentAction::Invalid);
+        QCOMPARE(a[5].type, AgentAction::Invalid);
+        for (int i = 0; i < 4; ++i)
+            QVERIFY(!a[i].needsApproval());
+    }
+
+    void reviewAndPlanTexts()
+    {
+        const QString small = reviewPrompt("the last commit", "proj", " a.cpp | 2 +-", "-old\n+new\n", {"new.h"}, "focus on leaks");
+        QVERIFY(small.contains("Under review: the last commit."));
+        QVERIFY(small.contains("+new"));
+        QVERIFY(small.contains("New files not yet added to git"));
+        QVERIFY(small.contains("focus on leaks"));
+        QVERIFY(small.contains("report_findings"));
+        QVERIFY(parseBlocks(extractFencedBlocks(small)).isEmpty());   // our own text never parses as an action
+        const QString big = reviewPrompt("x", "proj", "stat", QString(9000, QLatin1Char('d')), {}, QString());
+        QVERIFY(big.contains("too long to paste here (9000 characters)"));
+        QVERIFY(!big.contains(QString(100, QLatin1Char('d'))));
+        for (const QString &text : {small, planFirstInstructions()})
+            for (const char *w : {"You are", "RULES", "Never", "IMPORTANT", "must"})
+                QVERIFY2(!text.contains(QLatin1String(w)), w);
+    }
+
     void promptHasNoFencedExamples()
     {
         // Our own message must never contain a parseable block.

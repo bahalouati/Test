@@ -20,6 +20,16 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
                    const QString &platform, const QString &shell, const QString &notes = QString(),
                    const QString &focus = QString(), bool notesAllowed = true);
 
+// Added to a task's first message when the user wants a plan first.
+QString planFirstInstructions();
+
+// The whole first message of a review: what is being reviewed, the change
+// summary, the diff itself when it fits (else Copilot asks per file), and
+// how to report findings.
+QString reviewPrompt(const QString &targetDescription, const QString &workspaceName,
+                     const QString &diffStat, const QString &diff, const QStringList &untracked,
+                     const QString &extraInstructions, int diffBudget = 7000);
+
 // The part of the first message about files the user picked by hand:
 // which they are, the content of those that fit (path -> text), the names of
 // those too long to include, and whether only they may be changed.

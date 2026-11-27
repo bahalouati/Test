@@ -1,0 +1,79 @@
+{
+  "key": "PROJ-42",
+  "names": {
+    "customfield_10010": "Acceptance Criteria",
+    "customfield_10020": "Sprint",
+    "customfield_10030": "Steps to Reproduce",
+    "customfield_10040": "Severity"
+  },
+  "fields": {
+    "summary": "Timer shows the wrong time after midnight",
+    "issuetype": {
+      "name": "Bug"
+    },
+    "status": {
+      "name": "In Progress"
+    },
+    "priority": {
+      "name": "High"
+    },
+    "labels": [
+      "clock",
+      "ui"
+    ],
+    "components": [
+      {
+        "name": "Display"
+      }
+    ],
+    "fixVersions": [
+      {
+        "name": "2.4"
+      }
+    ],
+    "description": "After 00:00 the timer keeps the old date.",
+    "customfield_10010": "Shows today's date within 1 s of midnight.",
+    "customfield_10020": [
+      "com.atlassian.greenhopper.service.sprint.Sprint@1[name=Sprint 7]"
+    ],
+    "customfield_10030": "1. Run until 23:59:59\n2. Wait",
+    "customfield_10040": {
+      "value": "Major"
+    },
+    "comment": {
+      "comments": [
+        {
+          "author": {
+            "displayName": "Ann"
+          },
+          "created": "2026-11-20T10:00:00.000+0000",
+          "body": "First comment"
+        },
+        {
+          "author": {
+            "displayName": "Bob"
+          },
+          "created": "2026-11-21T10:00:00.000+0000",
+          "body": "Second comment"
+        }
+      ]
+    },
+    "attachment": [
+      {
+        "filename": "spec.txt",
+        "size": 100,
+        "content": "http://x/secure/attachment/1/spec.txt"
+      },
+      {
+        "filename": "screen.png",
+        "size": 50000,
+        "content": "http://x/secure/attachment/2/screen.png"
+      },
+      {
+        "filename": "huge.log",
+        "size": 99999999,
+        "content": "http://x/secure/attachment/3/huge.log"
+      }
+    ]
+  }
+}

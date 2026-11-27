@@ -1,11 +1,19 @@
 #pragma once
 
 #include "agentcontroller.h"
+#include "git.h"
+
+#include <QHash>
+#include <QJsonObject>
+
+#include <functional>
 #include "settingsdialog.h"
 
 #include <QMainWindow>
 
 class CopilotBridge;
+class QComboBox;
+namespace JiraConn { class Client; }
 class EdgeSession;
 class QSplitter;
 class QCheckBox;
@@ -40,6 +48,20 @@ private:
     void appendLog(AgentController::LogKind kind, const QString &text);
     void updateButtons();
     void syncFocusFiles();
+
+    // Modes: a free task (as always), a Jira ticket, or a review.
+    enum Mode { TaskMode = 0, JiraMode = 1, ReviewMode = 2 };
+    Mode mode() const;
+    void applyMode();
+    void startClicked();
+    void startPlainTask();
+    void loadJira(const QString &key, std::function<void()> then);
+    void startJiraTask();
+    bool createJiraBranch();   // false: the user chose Stop
+    void jiraWrapUp(const QString &summary);
+    void startReview();
+    Git::Target reviewTarget() const;
+    void openJiraSettings();
     bool eventFilter(QObject *watched, QEvent *event) override;
 
 protected:
@@ -86,5 +108,19 @@ private:
     QListWidget *m_files = nullptr;
     QCheckBox *m_onlyFiles = nullptr;
     QPushButton *m_removeFiles = nullptr;
+    QComboBox *m_mode = nullptr;
+    QCheckBox *m_planFirst = nullptr;
+    QWidget *m_jiraRow = nullptr;
+    QLineEdit *m_jiraKey = nullptr;
+    QLabel *m_jiraInfo = nullptr;
+    QWidget *m_reviewRow = nullptr;
+    QComboBox *m_reviewTarget = nullptr;
+    QLineEdit *m_reviewBase = nullptr;
+    JiraConn::Client *m_jira = nullptr;
+    QJsonObject m_jiraIssue;               // the loaded ticket
+    QHash<QString, QString> m_jiraAttachments;
+    QString m_activeJiraKey;               // the ticket the running task is for
+    QString m_jiraBranch;
+    QString m_reviewDescription;
     QLabel *m_status = nullptr;
 };

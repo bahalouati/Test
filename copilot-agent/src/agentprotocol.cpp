@@ -8,6 +8,58 @@
 
 namespace AgentProtocol {
 
+QString planFirstInstructions()
+{
+    return QStringLiteral(
+        "One more thing: I'd like to agree on a plan before anything changes. Please first look around with the "
+        "reading steps (search, find_files, read_file, list_dir), then send your plan with this step:\n"
+        "- propose a plan: `{\"action\":\"propose_plan\",\"plan\":\"<the plan: what you found, which files you "
+        "will change and how, how you will test it, and any questions for me>\"}`\n"
+        "Changes and commands become possible once I approve the plan. If I ask for changes, please send an updated plan.");
+}
+
+QString reviewPrompt(const QString &targetDescription, const QString &workspaceName,
+                     const QString &diffStat, const QString &diff, const QStringList &untracked,
+                     const QString &extraInstructions, int diffBudget)
+{
+    QString changes = QStringLiteral("Summary of the changes (git diff --stat):\n") + fence(diffStat.isEmpty() ? QStringLiteral("(no changes)") : diffStat);
+    if (!untracked.isEmpty())
+        changes += QStringLiteral("\nNew files not yet added to git (read them with read_file):\n- ") + untracked.join(QStringLiteral("\n- "));
+    if (!diff.isEmpty() && diff.size() <= diffBudget)
+        changes += QStringLiteral("\n\nThe full diff:\n") + fence(diff, QStringLiteral("diff"));
+    else if (!diff.isEmpty())
+        changes += QStringLiteral("\n\nThe diff is too long to paste here (%1 characters); please look at it file by file with show_diff.").arg(diff.size());
+
+    QString out = QStringLiteral(
+        "Hi! Could you review some code changes in a project on my computer?\n"
+        "\n"
+        "I use a small helper app that can show you the changes and any file in the project, and paste the "
+        "results back here. This is a review, so it only reads: nothing will be changed.\n"
+        "\n"
+        "So the app can understand your steps, please put each one in its own code block with the language set "
+        "to agent, containing one JSON object (replace the <...> parts):\n"
+        "- show the diff of one file: `{\"action\":\"show_diff\",\"path\":\"<file>\"}` (no path: all of it)\n"
+        "- show a file: `{\"action\":\"read_file\",\"path\":\"<file>\",\"start_line\":<n>,\"end_line\":<n>}`\n"
+        "- search the code: `{\"action\":\"search\",\"query\":\"<text>\"}`; find files: `{\"action\":\"find_files\",\"pattern\":\"<*.h>\"}`\n"
+        "- report what you found, all at once: `{\"action\":\"report_findings\",\"findings\":[{\"file\":\"<path>\",\"line\":<n>,"
+        "\"severity\":\"<high, medium or low>\",\"title\":\"<one line>\",\"detail\":\"<why it matters and a suggested fix>\"}]}` "
+        "(an empty list if you found nothing)\n"
+        "- finish: `{\"action\":\"done\",\"summary\":\"<your overall verdict in a few sentences>\"}`\n"
+        "\n"
+        "What helps most: real problems such as bugs, missed edge cases, error handling, security, behaviour that "
+        "does not match the intent, and missing or weak tests. Style only when it hurts readability. Please read "
+        "the surrounding code before judging a change, and point to exact lines.\n"
+        "\n"
+        "Project folder: %1. Under review: %2.\n"
+        "\n"
+        "%3\n")
+        .arg(workspaceName, targetDescription, changes);
+    if (!extraInstructions.trimmed().isEmpty())
+        out += QStringLiteral("\nMy notes for this review:\n") + extraInstructions.trimmed() + QLatin1Char('\n');
+    out += QStringLiteral("\nCould you start?");
+    return out;
+}
+
 QString focusSection(const QList<FocusFile> &files, bool onlyThese)
 {
     if (files.isEmpty())
@@ -193,6 +245,18 @@ static AgentAction fromObject(const QJsonObject &o)
         a.timeoutSec = qMax(0, num(o, "timeout", 0));
         if (a.command.isEmpty())
             a.error = QStringLiteral("run_command needs \"command\"");
+    } else if (n == QLatin1String("propose_plan") || n == QLatin1String("plan")) {
+        a.type = AgentAction::ProposePlan;
+        a.content = str(o, {"plan", "content", "text"});
+        if (a.content.trimmed().isEmpty())
+            a.error = QStringLiteral("propose_plan needs \"plan\"");
+    } else if (n == QLatin1String("report_findings") || n == QLatin1String("findings")) {
+        a.type = AgentAction::ReportFindings;
+        a.findings = o.value(QLatin1String("findings")).toArray();
+        if (!o.value(QLatin1String("findings")).isArray())
+            a.error = QStringLiteral("report_findings needs \"findings\" (a list; empty if there are none)");
+    } else if (n == QLatin1String("show_diff") || n == QLatin1String("diff")) {
+        a.type = AgentAction::ShowDiff;
     } else if (n == QLatin1String("set_cells") || n == QLatin1String("set_cell") || n == QLatin1String("edit_cells")) {
         a.type = AgentAction::SetCells;
         a.sheet = str(o, {"sheet", "worksheet"});
@@ -483,6 +547,9 @@ QString actionLabel(const AgentAction &a)
                                          a.path.isEmpty() ? QString() : QStringLiteral(" in ") + a.path);
     case AgentAction::FindFiles:     return QStringLiteral("find_files %1").arg(a.glob);
     case AgentAction::UpdateNotes:   return QStringLiteral("update_notes");
+    case AgentAction::ShowDiff:      return QStringLiteral("show_diff %1").arg(a.path.isEmpty() ? QStringLiteral("(all)") : a.path);
+    case AgentAction::ProposePlan:   return QStringLiteral("propose_plan");
+    case AgentAction::ReportFindings:return QStringLiteral("report_findings (%1)").arg(a.findings.size());
     case AgentAction::WriteFile:     return QStringLiteral("write_file %1").arg(a.path);
     case AgentAction::ReplaceInFile: return QStringLiteral("replace_in_file %1").arg(a.path);
     case AgentAction::RunCommand:    return QStringLiteral("run_command `%1`").arg(a.command);

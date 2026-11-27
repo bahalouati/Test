@@ -2,6 +2,7 @@
 
 #include "agentaction.h"
 #include "commandrunner.h"
+#include "git.h"
 #include "workspace.h"
 
 #include <QList>
@@ -29,6 +30,20 @@ public:
     // may edit the action (e.g. the command line) and give a reason when it
     // rejects, which is passed on to Copilot.
     using Approver = std::function<Decision(AgentAction &action, QString *note)>;
+
+    // Plan first and review restrict what Copilot may do:
+    //   Planning - reading only, until the user approves a propose_plan;
+    //   Review   - reading only, for the whole task.
+    enum class Phase { Normal, Planning, Review };
+    enum class PlanDecision { Approve, Revise, Stop };
+    using PlanApprover = std::function<PlanDecision(const QString &plan, QString *note)>;
+    void setPlanApprover(PlanApprover a) { m_planApprover = std::move(a); }
+    void setPlanFirst(bool on) { m_planFirst = on; }
+    Phase phase() const { return m_phase; }
+    // What show_diff compares (also outside a review: the uncommitted work).
+    void setDiffTarget(const Git::Target &t) { m_diffTarget = t; }
+    // Files changed during this session, oldest first (from the undo list).
+    QStringList changedFiles() const;
 
     struct Options {
         bool autoLoop = true;
@@ -73,6 +88,8 @@ public:
 
 public slots:
     void startTask(const QString &task);
+    // A read-only review; the prompt comes from AgentProtocol::reviewPrompt.
+    void startReview(const QString &prompt, const Git::Target &target);
     void sendFollowUp(const QString &text);
     void sendPendingResults();
     // The code blocks that appeared in Copilot's newest reply.
@@ -87,6 +104,7 @@ signals:
     void taskFinished(const QString &summary);
     void commandOutput(const QString &chunk);
     void undoChanged();
+    void findingsReported(const QJsonArray &findings);
 
 private:
     void setState(State s);
@@ -127,6 +145,11 @@ private:
     int m_failStreak = 0;       // steps in a row where nothing succeeded
     bool m_busy = false;        // a background search is running
     QStringList m_focus;
+    PlanApprover m_planApprover;
+    bool m_planFirst = false;
+    Phase m_phase = Phase::Normal;
+    Git::Target m_diffTarget;
+    QString refusalFor(const AgentAction &a) const;
     bool m_onlyFocus = true;
     quint64 m_stepGen = 0;      // changes on every new step and on stop
     quint64 m_sendSerial = 0;   // invalidates a pending delayed send

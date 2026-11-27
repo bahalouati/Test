@@ -98,6 +98,13 @@
       var action = { action: 'list_dir', path: 'reply-' + n + '-len-' + t.length };
       if (t.indexOf('MOCK_WRITE') >= 0)
         action = { action: 'write_file', path: 'README.md', content: '# Demo\n\nA tiny C++ program.\n' };
+      else if (t.indexOf('MOCK_REVIEW') >= 0)
+        action = { action: 'report_findings', findings: [
+          { file: 'src/main.cpp', line: 1, severity: 'medium', title: 'main ignores errors', detail: 'Return a non-zero code when setup fails.' },
+          { file: 'README.md', line: 3, severity: 'low', title: 'Typo', detail: 'programm -> program' },
+          { file: 'src/main.cpp', line: 1, severity: 'high', title: 'Possible crash', detail: 'A null pointer is dereferenced when the window fails to open.' } ] };
+      else if (t.indexOf('received 3 findings') >= 0)
+        action = { action: 'done', summary: 'Two real issues and a typo.' };
       else if (t.indexOf('MOCK_EXCEL') >= 0)
         action = { action: 'set_cells', path: 'budget.xlsx', sheet: 'Budget', cells: { B3: 950, B5: '=B4*2' } };
       else if (t.indexOf('MOCK_RUN') >= 0)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 
@@ -16,6 +17,9 @@ struct AgentAction
         ReplaceInFile,  // needs approval
         RunCommand,     // needs approval
         SetCells,       // Excel cells; needs approval
+        ShowDiff,       // read-only: the diff under review (or of uncommitted work)
+        ProposePlan,    // plan-first: the plan, shown to the user to approve
+        ReportFindings, // review: the findings, shown to the user
         Done,           // the task is finished
         Invalid         // could not be understood; reported back as an error
     };
@@ -41,6 +45,7 @@ struct AgentAction
     int maxResults = 0;    // search / find_files; 0 means "use the default"
     QString sheet;         // set_cells
     QJsonObject cells;     // set_cells: {"B2": value, ...}
+    QJsonArray findings;   // report_findings: [{file, line, severity, title, detail}]
     QJsonObject raw;
 
     bool needsApproval() const
