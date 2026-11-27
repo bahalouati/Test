@@ -85,8 +85,46 @@ void AgentController::startTask(const QString &task)
     const QString notes = m_ws.readNotes();
     if (!notes.isEmpty())
         emit log(LogKind::Info, tr("Including the project notes (%1).").arg(Workspace::notesFileName()));
+
+    // The picked files: as much content as fits, small files first so as
+    // many as possible come whole.
+    QList<FocusFile> focus;
+    for (const QString &path : m_focus) {
+        AgentAction read;
+        read.type = AgentAction::ReadFile;
+        read.path = path;
+        const ActionResult r = m_ws.readFile(read);
+        FocusFile f;
+        f.path = path;
+        if (r.ok && !r.status.contains(QLatin1String("only lines"))) {
+            f.content = r.output;
+            f.lines = int(r.output.count(QLatin1Char('\n'))) + 1;
+        } else {
+            QFile file(QDir(m_ws.root()).filePath(path));
+            if (file.open(QIODevice::ReadOnly))
+                f.lines = int(file.readAll().count('\n')) + 1;
+        }
+        focus << f;
+    }
+    QList<int> order;
+    for (int i = 0; i < focus.size(); ++i)
+        order << i;
+    std::sort(order.begin(), order.end(), [&](int x, int y) { return focus[x].content.size() < focus[y].content.size(); });
+    int budget = kFocusContentBudget;
+    for (int i : order) {
+        if (!focus[i].content.isEmpty() && focus[i].content.size() <= budget) {
+            focus[i].included = true;
+            budget -= int(focus[i].content.size());
+        }
+    }
+    if (!m_focus.isEmpty())
+        emit log(LogKind::Info, onlyFocusFiles()
+                 ? tr("Picked files: %1. Only these may be changed.").arg(m_focus.join(QStringLiteral(", ")))
+                 : tr("Picked files: %1.").arg(m_focus.join(QStringLiteral(", "))));
+
     send(taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
-                    CommandRunner::shellName(), notes));
+                    CommandRunner::shellName(), notes, focusSection(focus, onlyFocusFiles()),
+                    !onlyFocusFiles()));
 }
 
 void AgentController::sendFollowUp(const QString &text)
@@ -189,6 +227,22 @@ void AgentController::runNext()
         m_doneSeen = true;
         m_doneSummary = a.summary;
         skipRemaining(QStringLiteral("skipped: came after done"));
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+
+    // Changes outside the files the user picked are refused outright.
+    const bool changesAFile = a.type == AgentAction::WriteFile || a.type == AgentAction::ReplaceInFile
+                           || a.type == AgentAction::UpdateNotes;
+    if (changesAFile && onlyFocusFiles()
+        && (a.type == AgentAction::UpdateNotes || outsideFocus(a.path))) {
+        ActionResult r;
+        r.action = a;
+        r.status = QStringLiteral("refused: only these files may be changed in this task: %1")
+                       .arg(m_focus.join(QStringLiteral(", ")));
+        record(r);
+        if (a.type != AgentAction::UpdateNotes)
+            skipRemaining(QStringLiteral("skipped: an earlier change in this step was refused"));
         QTimer::singleShot(0, this, &AgentController::runNext);
         return;
     }
@@ -360,6 +414,33 @@ void AgentController::finishStep()
     if (m_opts.autoLoop)
         emit log(LogKind::Info, tr("Reached the limit of %1 steps. Press \"Send results\" to let it continue.").arg(m_opts.maxSteps));
     setState(State::ResultsReady);
+}
+
+void AgentController::setFocusFiles(const QStringList &paths, bool onlyThese)
+{
+    m_focus = paths;
+    m_onlyFocus = onlyThese;
+}
+
+bool AgentController::outsideFocus(const QString &path) const
+{
+    // Compare where the paths actually point, so "./a.cpp", "src/../a.cpp"
+    // and (on Windows) different letter case all count as the same file.
+    QString err;
+    const QString target = QDir::cleanPath(m_ws.resolve(path, &err));
+    if (target.isEmpty())
+        return true;
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+    for (const QString &f : m_focus) {
+        const QString allowed = QDir::cleanPath(m_ws.resolve(f, &err));
+        if (!allowed.isEmpty() && allowed.compare(target, cs) == 0)
+            return false;
+    }
+    return true;
 }
 
 AgentController::FileChange AgentController::snapshot(const QString &path) const

@@ -292,6 +292,67 @@ private slots:
         QVERIFY(n.readAll().startsWith("# Old notes"));
     }
 
+    void pickedFilesGoInThePrompt()
+    {
+        QDir().mkpath(m_dir.path() + "/src");
+        QFile a(m_dir.path() + "/src/a.cpp");
+        QVERIFY(a.open(QIODevice::WriteOnly));
+        a.write("int alpha() { return 1; }\n");
+        a.close();
+        QFile big(m_dir.path() + "/big.txt");
+        QVERIFY(big.open(QIODevice::WriteOnly));
+        for (int i = 0; i < 2000; ++i)
+            big.write("filler line\n");
+        big.close();
+
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp", "big.txt"}, true);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("rename alpha");
+        const QString p = sent[0][0].toString();
+        QVERIFY(p.contains("- src/a.cpp (2 lines)"));
+        QVERIFY(p.contains("int alpha() { return 1; }"));                  // content included
+        QVERIFY(p.contains("big.txt (2001 lines), too long to include"));  // named, not pasted
+        QVERIFY(!p.contains("filler line"));
+        QVERIFY(p.contains("only they should be changed"));
+        QVERIFY(!p.contains("update the notes"));                           // notes off when restricted
+    }
+
+    void changesOutsidePickedFilesAreRefused()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp"}, true);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"other.cpp\",\"content\":\"x\"}",
+                    "{\"action\":\"write_file\",\"path\":\"./src/../src/a.cpp\",\"content\":\"y\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());                               // refused without asking
+        QVERIFY(!QFile::exists(m_dir.path() + "/other.cpp"));
+        QVERIFY(!QFile::exists(m_dir.path() + "/src/a.cpp"));     // the rest of the step was skipped
+        QVERIFY(sent.last()[0].toString().contains("refused: only these files may be changed in this task: src/a.cpp"));
+
+        // The picked file itself, written as an odd but equivalent path: allowed, with approval.
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"./src/../src/a.cpp\",\"content\":\"y\"}",
+                    "{\"action\":\"update_notes\",\"content\":\"n\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(m_asked.size(), 1);
+        QVERIFY(QFile::exists(m_dir.path() + "/src/a.cpp"));
+        QVERIFY(!QFile::exists(m_dir.path() + "/AGENT_NOTES.md"));  // notes refused too
+    }
+
+    void pickedFilesWithoutRestriction()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp"}, false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QVERIFY(sent[0][0].toString().contains("as the place to start"));
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"other.cpp\",\"content\":\"x\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(QFile::exists(m_dir.path() + "/other.cpp"));
+    }
+
     void manualModeHoldsResults()
     {
         AgentController *c = make(Decision::Approve, /*autoLoop*/ false);

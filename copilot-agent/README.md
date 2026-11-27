@@ -71,6 +71,20 @@ sending anything more.
 Paths are resolved inside the project folder only. `..`, absolute paths and symlinks that point
 outside the folder are refused before anything is touched.
 
+## Picking files for a task
+
+To work on specific files, drag them from Explorer onto the **Files** box (or anywhere on the
+window), use **Add files...**, or drop them onto the program's icon. Their content goes to
+Copilot with the task, as much as fits in about 8,000 characters (smallest files first). Longer
+ones are listed by name for Copilot to read in parts.
+
+With **Only let Copilot change these files** ticked (the default), Copilot can still read and
+search anything, but a write or edit to any other file is refused automatically, without a
+dialog, and Copilot is told why. The project notes aren't updated then either. Commands still
+go through the approval dialog as usual. Untick it to make the files a starting point only.
+Files outside the project folder can't be added; if no project folder is chosen yet, the
+first file's folder becomes the project folder.
+
 ## Big projects
 
 - **Search first.** Copilot can search the code and find files by name without asking you,

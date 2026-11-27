@@ -43,6 +43,15 @@ public:
     explicit AgentController(QObject *parent = nullptr);
 
     void setApprover(Approver a) { m_approver = std::move(a); }
+
+    // Files the user picked for the task (relative to the project folder).
+    // Their content goes into the first message; with onlyThese, changes to
+    // any other file (and to the notes) are refused without asking.
+    void setFocusFiles(const QStringList &paths, bool onlyThese);
+    QStringList focusFiles() const { return m_focus; }
+    bool onlyFocusFiles() const { return m_onlyFocus && !m_focus.isEmpty(); }
+    // Characters of picked files' content sent with the task, at most.
+    static constexpr int kFocusContentBudget = 8000;
     void setOptions(const Options &o) { m_opts = o; }
     Options options() const { return m_opts; }
     Workspace &workspace() { return m_ws; }
@@ -86,6 +95,7 @@ private:
     void record(const ActionResult &r);
     void send(QString text);   // by value: callers pass m_pending, which send() clears
     void skipRemaining(const QString &why);
+    bool outsideFocus(const QString &path) const;
     struct FileChange {
         QString path;          // relative to the workspace
         bool existed = false;
@@ -116,6 +126,8 @@ private:
     QByteArray m_lastSignature; // of the previous step, to spot repeats
     int m_failStreak = 0;       // steps in a row where nothing succeeded
     bool m_busy = false;        // a background search is running
+    QStringList m_focus;
+    bool m_onlyFocus = true;
     quint64 m_stepGen = 0;      // changes on every new step and on stop
     quint64 m_sendSerial = 0;   // invalidates a pending delayed send
 };

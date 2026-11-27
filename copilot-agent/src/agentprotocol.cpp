@@ -8,8 +8,29 @@
 
 namespace AgentProtocol {
 
+QString focusSection(const QList<FocusFile> &files, bool onlyThese)
+{
+    if (files.isEmpty())
+        return QString();
+    QString out = onlyThese
+        ? QStringLiteral("For this task I've picked these files, and only they should be changed. Reading or searching "
+                         "other files is fine, but the app will refuse changes to any other file, so please plan "
+                         "the work within them:\n")
+        : QStringLiteral("For this task I've picked these files as the place to start:\n");
+    for (const FocusFile &f : files)
+        out += QStringLiteral("- %1 (%2 lines)%3\n").arg(f.path).arg(f.lines)
+                   .arg(f.included ? QString() : QStringLiteral(", too long to include here: read it in parts"));
+    for (const FocusFile &f : files) {
+        if (!f.included)
+            continue;
+        out += QStringLiteral("\nCurrent content of %1:\n").arg(f.path) + fence(f.content) + QLatin1Char('\n');
+    }
+    return out;
+}
+
 QString taskPrompt(const QString &task, const QString &workspaceName,
-                   const QString &platform, const QString &shell, const QString &notes)
+                   const QString &platform, const QString &shell, const QString &notes,
+                   const QString &focus, bool notesAllowed)
 {
     // Written as an ordinary request from a person, not as a "system prompt":
     // no role assignment, no ALL-CAPS rules, no "never/ignore" wording, which
@@ -18,7 +39,13 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
     // Examples are inline code, not fenced blocks: the bridge only reads
     // fenced blocks, so our own message can never be mistaken for a reply.
     QString notesPart;
-    if (notes.trimmed().isEmpty()) {
+    if (!notesAllowed) {
+        notesPart = notes.trimmed().isEmpty()
+            ? QString()
+            : QStringLiteral("Here are the project notes from earlier conversations, for background (please don't "
+                             "update them this time):\n%1\n")
+                  .arg(fence(truncateMiddle(notes.trimmed(), 6000), QStringLiteral("markdown")));
+    } else if (notes.trimmed().isEmpty()) {
         notesPart = QStringLiteral(
             "There are no project notes yet. Before you finish, please write some with the notes step: a short "
             "overview of the project (layout, how to build and test, conventions) and what this task changed, "
@@ -68,16 +95,20 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
         "deleting things, changing system settings or anything that needs administrator rights, and avoid "
         "commands that wait for input or keep running.\n"
         "- If you need a decision from me, just ask in plain text.\n"
-        "- When everything is done and checked, update the notes, then send the finish step.\n"
+        "%6"
         "\n"
         "About my setup: the project folder is %1, the operating system is %2, and commands run in %3.\n"
         "\n"
         "%5"
         "\n"
+        "%7"
         "Here is the task:\n%4\n"
         "\n"
         "Could you start by having a look at the project?")
-        .arg(workspaceName, platform, shell, task.trimmed(), notesPart);
+        .arg(workspaceName, platform, shell, task.trimmed(), notesPart,
+             notesAllowed ? QStringLiteral("- When everything is done and checked, update the notes, then send the finish step.\n")
+                          : QStringLiteral("- When everything is done and checked, send the finish step.\n"),
+             focus.isEmpty() ? QString() : focus + QLatin1Char('\n'));
 }
 
 static QString str(const QJsonObject &o, std::initializer_list<const char *> keys)
