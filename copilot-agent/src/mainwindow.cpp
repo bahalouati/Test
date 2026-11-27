@@ -145,6 +145,17 @@ void MainWindow::buildUi()
         m_edge->setBrowserPath(m_settings.browserPath);
         m_edge->start();
     });
+    m_describe = appBar->addAction(tr("Copy page details"));
+    m_describe->setToolTip(tr("If the app misses Copilot's replies: copies how the page is built, "
+                              "to send to whoever maintains this app"));
+    connect(m_describe, &QAction::triggered, this, [this] {
+        m_bridge->describePage([this](const QString &text) {
+            QApplication::clipboard()->setText(text);
+            appendLog(AgentController::LogKind::Info,
+                      tr("Copied the page details (%1 characters). They include the text of the last replies; "
+                         "check before sharing.").arg(text.size()));
+        });
+    });
     auto *settings = appBar->addAction(tr("Settings"));
     connect(settings, &QAction::triggered, this, [this] {
         SettingsDialog d(m_settings, this);
@@ -378,6 +389,7 @@ void MainWindow::applySettings()
     m_view->setVisible(builtin);
     m_browserBar->setVisible(builtin);
     m_openEdge->setVisible(isMode("edge"));
+    m_describe->setVisible(!isMode("clipboard"));
     m_readReply->setVisible(!isMode("clipboard"));
     m_pasteReply->setVisible(isMode("clipboard") || m_edgeFellBack);
     m_edge->setStartUrl(m_settings.url);

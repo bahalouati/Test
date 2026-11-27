@@ -18,10 +18,16 @@
     textarea - a React-style controlled textarea
     strict   - like the real site: only a genuine Enter key sends (script-made
                key events are ignored) and the send button has no label
+    m365     - replies as a Microsoft 365 style "code card" (header, notice,
+               line-number gutter, pretty-printed JSON over several lines, no
+               <pre>), with an empty role="log" live region on the page
+    unknown  - replies in a card whose markup matches no known code selector,
+               so only the page-text fallback can find the action
   On send it shows a stop button while "streaming", then a reply holding one
   agent block that echoes the prompt length, plus an ordinary code block.
 -->
-<div id="chat" role="log"></div>
+<div id="announcer" role="log" aria-live="polite" style="position:absolute;left:-9999px"></div>
+<div id="chat"></div>
 <div id="composer"></div>
 <button id="send" aria-label="Send">Send</button>
 <script>
@@ -96,9 +102,34 @@
         action = { action: 'run_command', command: 'ls -la src' };
       else if (t.indexOf('write_file README.md') >= 0)
         action = { action: 'done', summary: 'README added' };
-      code.textContent = JSON.stringify(action);
-      pre.appendChild(code);
-      reply.appendChild(pre);
+      if (mode === 'm365' || mode === 'unknown') {
+        // A card: header, notice, then one row per line with its number.
+        var card = document.createElement('div');
+        card.className = mode === 'm365' ? 'fui-Card ___codeBlock_x1y2' : 'fui-Card r1abc2d';
+        var head = document.createElement('div');
+        head.textContent = 'Plain Text';
+        card.appendChild(head);
+        var note = document.createElement('div');
+        note.textContent = "agent isn't fully supported. Syntax highlighting is based on Plain Text.";
+        card.appendChild(note);
+        var text = mode === 'm365' ? JSON.stringify(action, null, 2) : JSON.stringify(action);
+        text.split('\n').forEach(function (line, i) {
+          var row = document.createElement('div');
+          var num = document.createElement('span');
+          num.textContent = String(i + 1);
+          num.style.marginRight = '12px';
+          var src = document.createElement('span');
+          src.textContent = line;
+          row.appendChild(num);
+          row.appendChild(src);
+          card.appendChild(row);
+        });
+        reply.appendChild(card);
+      } else {
+        code.textContent = JSON.stringify(action);
+        pre.appendChild(code);
+        reply.appendChild(pre);
+      }
       var other = document.createElement('pre');
       other.textContent = 'int main() { return 0; }';
       reply.appendChild(other);

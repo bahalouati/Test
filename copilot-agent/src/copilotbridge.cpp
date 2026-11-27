@@ -304,6 +304,15 @@ void CopilotBridge::readNow()
     }
 }
 
+void CopilotBridge::describePage(std::function<void(const QString &)> done)
+{
+    run(QStringLiteral("__copilotAgent.describe(%1)").arg(jsArg(m_overrides)), [done](const QVariantMap &m) {
+        done(m.value(QStringLiteral("ok")).toBool() ? m.value(QStringLiteral("text")).toString()
+                                                   : QStringLiteral("(could not read the page: %1)")
+                                                         .arg(m.value(QStringLiteral("error")).toString()));
+    });
+}
+
 void CopilotBridge::cancel()
 {
     m_poll.stop();
