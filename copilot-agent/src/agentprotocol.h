@@ -12,8 +12,19 @@
 namespace AgentProtocol {
 
 // The first message of a task: how to ask for actions, then the task itself.
+// notes: the project's AGENT_NOTES.md, if any, so a new conversation starts
+// with what earlier ones learned.
+// focus: from focusSection(), the files the user picked for this task.
+// notesAllowed: false when the user limited changes to those files.
 QString taskPrompt(const QString &task, const QString &workspaceName,
-                   const QString &platform, const QString &shell);
+                   const QString &platform, const QString &shell, const QString &notes = QString(),
+                   const QString &focus = QString(), bool notesAllowed = true);
+
+// The part of the first message about files the user picked by hand:
+// which they are, the content of those that fit (path -> text), the names of
+// those too long to include, and whether only they may be changed.
+struct FocusFile { QString path; QString content; int lines = 0; bool included = false; };
+QString focusSection(const QList<FocusFile> &files, bool onlyThese);
 
 // Parses the text of rendered code blocks. Blocks that are not agent JSON
 // (ordinary code Copilot shows while explaining) are skipped silently; blocks

@@ -9,6 +9,9 @@ class CopilotBridge;
 class EdgeSession;
 class QSplitter;
 class QCheckBox;
+class QDragEnterEvent;
+class QDropEvent;
+class QListWidget;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
@@ -25,6 +28,9 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+    // Adds files (absolute paths) to the picked-files list.
+    void addFiles(const QStringList &paths);
+
 private:
     void buildUi();
     void wire();
@@ -33,6 +39,14 @@ private:
     void setFolder(const QString &path);
     void appendLog(AgentController::LogKind kind, const QString &text);
     void updateButtons();
+    void syncFocusFiles();
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
+protected:
+    void dragEnterEvent(QDragEnterEvent *e) override;
+    void dropEvent(QDropEvent *e) override;
+
+private:
     AgentController::Decision approve(AgentAction &a, QString *note);
     void deliverPrompt(const QString &text);
     void deliverByClipboard(const QString &text);
@@ -69,5 +83,8 @@ private:
     QCheckBox *m_autoLoop = nullptr;
     QSpinBox *m_maxSteps = nullptr;
     QTextBrowser *m_log = nullptr;
+    QListWidget *m_files = nullptr;
+    QCheckBox *m_onlyFiles = nullptr;
+    QPushButton *m_removeFiles = nullptr;
     QLabel *m_status = nullptr;
 };

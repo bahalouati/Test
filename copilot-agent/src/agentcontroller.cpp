@@ -8,7 +8,9 @@
 #include <QStandardPaths>
 #include <QFileInfo>
 #include <QSysInfo>
+#include <QFutureWatcher>
 #include <QTimer>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 
@@ -80,8 +82,49 @@ void AgentController::startTask(const QString &task)
     m_failStreak = 0;
     m_notes.clear();
     emit log(LogKind::Info, tr("New task in %1").arg(QDir::toNativeSeparators(m_ws.root())));
+    const QString notes = m_ws.readNotes();
+    if (!notes.isEmpty())
+        emit log(LogKind::Info, tr("Including the project notes (%1).").arg(Workspace::notesFileName()));
+
+    // The picked files: as much content as fits, small files first so as
+    // many as possible come whole.
+    QList<FocusFile> focus;
+    for (const QString &path : m_focus) {
+        AgentAction read;
+        read.type = AgentAction::ReadFile;
+        read.path = path;
+        const ActionResult r = m_ws.readFile(read);
+        FocusFile f;
+        f.path = path;
+        if (r.ok && !r.status.contains(QLatin1String("only lines"))) {
+            f.content = r.output;
+            f.lines = int(r.output.count(QLatin1Char('\n'))) + 1;
+        } else {
+            QFile file(QDir(m_ws.root()).filePath(path));
+            if (file.open(QIODevice::ReadOnly))
+                f.lines = int(file.readAll().count('\n')) + 1;
+        }
+        focus << f;
+    }
+    QList<int> order;
+    for (int i = 0; i < focus.size(); ++i)
+        order << i;
+    std::sort(order.begin(), order.end(), [&](int x, int y) { return focus[x].content.size() < focus[y].content.size(); });
+    int budget = kFocusContentBudget;
+    for (int i : order) {
+        if (!focus[i].content.isEmpty() && focus[i].content.size() <= budget) {
+            focus[i].included = true;
+            budget -= int(focus[i].content.size());
+        }
+    }
+    if (!m_focus.isEmpty())
+        emit log(LogKind::Info, onlyFocusFiles()
+                 ? tr("Picked files: %1. Only these may be changed.").arg(m_focus.join(QStringLiteral(", ")))
+                 : tr("Picked files: %1.").arg(m_focus.join(QStringLiteral(", "))));
+
     send(taskPrompt(task, QFileInfo(m_ws.root()).fileName(), QSysInfo::prettyProductName(),
-                    CommandRunner::shellName()));
+                    CommandRunner::shellName(), notes, focusSection(focus, onlyFocusFiles()),
+                    !onlyFocusFiles()));
 }
 
 void AgentController::sendFollowUp(const QString &text)
@@ -127,6 +170,7 @@ void AgentController::onReply(const QStringList &codeBlocks)
         m_active = true;
 
     m_sinceReply.start();
+    ++m_stepGen;
     ++m_step;
     m_results.clear();
     m_queue.clear();
@@ -161,7 +205,7 @@ void AgentController::skipRemaining(const QString &why)
 
 void AgentController::runNext()
 {
-    if (m_state != State::RunningActions || m_runner.isRunning())
+    if (m_state != State::RunningActions || m_runner.isRunning() || m_busy)
         return;
     if (m_queue.isEmpty()) {
         finishStep();
@@ -183,6 +227,22 @@ void AgentController::runNext()
         m_doneSeen = true;
         m_doneSummary = a.summary;
         skipRemaining(QStringLiteral("skipped: came after done"));
+        QTimer::singleShot(0, this, &AgentController::runNext);
+        return;
+    }
+
+    // Changes outside the files the user picked are refused outright.
+    const bool changesAFile = a.type == AgentAction::WriteFile || a.type == AgentAction::ReplaceInFile
+                           || a.type == AgentAction::UpdateNotes;
+    if (changesAFile && onlyFocusFiles()
+        && (a.type == AgentAction::UpdateNotes || outsideFocus(a.path))) {
+        ActionResult r;
+        r.action = a;
+        r.status = QStringLiteral("refused: only these files may be changed in this task: %1")
+                       .arg(m_focus.join(QStringLiteral(", ")));
+        record(r);
+        if (a.type != AgentAction::UpdateNotes)
+            skipRemaining(QStringLiteral("skipped: an earlier change in this step was refused"));
         QTimer::singleShot(0, this, &AgentController::runNext);
         return;
     }
@@ -211,6 +271,43 @@ void AgentController::runNext()
     switch (a.type) {
     case AgentAction::ReadFile:      record(m_ws.readFile(a)); break;
     case AgentAction::ListDir:       record(m_ws.listDir(a)); break;
+    case AgentAction::Search:
+    case AgentAction::FindFiles: {
+        // Can take seconds on a big project: run on a copy of the workspace
+        // in the background, keep the window responsive.
+        const Workspace ws = m_ws;
+        m_busy = true;
+        const quint64 gen = m_stepGen;
+        auto *watcher = new QFutureWatcher<ActionResult>(this);
+        connect(watcher, &QFutureWatcher<ActionResult>::finished, this, [this, watcher, gen] {
+            watcher->deleteLater();
+            m_busy = false;
+            if (gen != m_stepGen) {
+                // Stopped (or a new step began) meanwhile: drop the result,
+                // but let a step that was waiting for us continue.
+                if (m_state == State::RunningActions)
+                    QTimer::singleShot(0, this, &AgentController::runNext);
+                return;
+            }
+            if (m_state != State::RunningActions)
+                return;
+            record(watcher->result());
+            QTimer::singleShot(0, this, &AgentController::runNext);
+        });
+        watcher->setFuture(QtConcurrent::run([ws, a] {
+            return a.type == AgentAction::Search ? ws.search(a) : ws.findFiles(a);
+        }));
+        return;
+    }
+    case AgentAction::UpdateNotes: {
+        // Only ever AGENT_NOTES.md, so no approval; still undoable.
+        const FileChange before = snapshot(Workspace::notesFileName());
+        const ActionResult r = m_ws.writeNotes(a);
+        if (r.ok)
+            remember(before);
+        record(r);
+        break;
+    }
     case AgentAction::WriteFile: {
         const FileChange before = snapshot(a.path);
         const ActionResult r = m_ws.writeFile(a);
@@ -319,6 +416,33 @@ void AgentController::finishStep()
     setState(State::ResultsReady);
 }
 
+void AgentController::setFocusFiles(const QStringList &paths, bool onlyThese)
+{
+    m_focus = paths;
+    m_onlyFocus = onlyThese;
+}
+
+bool AgentController::outsideFocus(const QString &path) const
+{
+    // Compare where the paths actually point, so "./a.cpp", "src/../a.cpp"
+    // and (on Windows) different letter case all count as the same file.
+    QString err;
+    const QString target = QDir::cleanPath(m_ws.resolve(path, &err));
+    if (target.isEmpty())
+        return true;
+#ifdef Q_OS_WIN
+    const Qt::CaseSensitivity cs = Qt::CaseInsensitive;
+#else
+    const Qt::CaseSensitivity cs = Qt::CaseSensitive;
+#endif
+    for (const QString &f : m_focus) {
+        const QString allowed = QDir::cleanPath(m_ws.resolve(f, &err));
+        if (!allowed.isEmpty() && allowed.compare(target, cs) == 0)
+            return false;
+    }
+    return true;
+}
+
 AgentController::FileChange AgentController::snapshot(const QString &path) const
 {
     FileChange c;
@@ -399,6 +523,7 @@ bool AgentController::undoLast(QString *message)
 void AgentController::stop()
 {
     ++m_sendSerial;
+    ++m_stepGen;
     m_queue.clear();
     m_runner.kill();
     m_active = false;

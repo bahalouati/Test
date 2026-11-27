@@ -18,6 +18,11 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QKeyEvent>
+#include <QListWidget>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QUrl>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
@@ -215,6 +220,56 @@ void MainWindow::buildUi()
     loopRow->addWidget(m_maxSteps);
     tl->addLayout(loopRow);
     pl->addWidget(taskBox);
+
+    // Files picked by hand: dragged in, or chosen with the button.
+    auto *filesBox = new QGroupBox(tr("Files (optional): drag files here"), panel);
+    auto *fbl = new QVBoxLayout(filesBox);
+    m_files = new QListWidget(filesBox);
+    m_files->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_files->setMaximumHeight(96);
+    m_files->setToolTip(tr("Files for this task. Their content goes to Copilot with the task. "
+                           "Drag files from Explorer onto this list or anywhere on the window."));
+    m_files->setAcceptDrops(true);
+    m_files->viewport()->setAcceptDrops(true);
+    m_files->viewport()->installEventFilter(this);
+    fbl->addWidget(m_files);
+    auto *frow = new QHBoxLayout;
+    auto *addFilesBtn = new QPushButton(tr("Add files..."), filesBox);
+    m_removeFiles = new QPushButton(tr("Remove"), filesBox);
+    auto *clearFiles = new QPushButton(tr("Clear"), filesBox);
+    m_onlyFiles = new QCheckBox(tr("Only let Copilot change these files"), filesBox);
+    m_onlyFiles->setChecked(true);
+    m_onlyFiles->setEnabled(false);   // until files are added
+    m_onlyFiles->setToolTip(tr("Copilot may still read and search everything, but writes and edits to any "
+                               "other file are refused automatically"));
+    frow->addWidget(addFilesBtn);
+    frow->addWidget(m_removeFiles);
+    frow->addWidget(clearFiles);
+    frow->addStretch();
+    frow->addWidget(m_onlyFiles);
+    fbl->addLayout(frow);
+    pl->addWidget(filesBox);
+
+    connect(addFilesBtn, &QPushButton::clicked, this, [this] {
+        const QStringList picked = QFileDialog::getOpenFileNames(this, tr("Files for this task"),
+                                                                 m_agent->workspace().root());
+        addFiles(picked);
+    });
+    connect(m_removeFiles, &QPushButton::clicked, this, [this] {
+        qDeleteAll(m_files->selectedItems());
+        syncFocusFiles();
+    });
+    connect(clearFiles, &QPushButton::clicked, this, [this] {
+        m_files->clear();
+        syncFocusFiles();
+    });
+    connect(m_files, &QListWidget::itemSelectionChanged, this, &MainWindow::updateButtons);
+    connect(m_onlyFiles, &QCheckBox::toggled, this, &MainWindow::syncFocusFiles);
+
+    // Dropping a file on the task box would paste its path as text; take it
+    // as a picked file instead.
+    m_task->viewport()->installEventFilter(this);
+    setAcceptDrops(true);
 
     auto *manual = new QHBoxLayout;
     m_sendResults = new QPushButton(tr("Send results"), panel);
@@ -423,6 +478,10 @@ void MainWindow::setFolder(const QString &path)
         QMessageBox::information(this, windowTitle(), tr("Stop the agent before changing the folder."));
         return;
     }
+    if (m_files && m_agent->workspace().root() != QFileInfo(path).canonicalFilePath()) {
+        m_files->clear();   // picked files belong to the old folder
+        syncFocusFiles();
+    }
     m_agent->workspace().setRoot(path);
     m_folder->setText(QDir::toNativeSeparators(m_agent->workspace().root()));
     QSettings().setValue(QStringLiteral("workspace"), m_agent->workspace().root());
@@ -458,6 +517,8 @@ void MainWindow::updateButtons()
     m_copyPrompt->setEnabled(!m_agent->lastPrompt().isEmpty());
     m_pasteReply->setEnabled(s != S::RunningActions);
     m_undo->setEnabled(m_agent->canUndo());
+    if (m_removeFiles)
+        m_removeFiles->setEnabled(!m_files->selectedItems().isEmpty());
     m_undo->setToolTip(m_agent->canUndo() ? tr("Undo: %1").arg(m_agent->undoLabel())
                                           : tr("Nothing to undo"));
 
@@ -575,4 +636,101 @@ AgentController::Decision MainWindow::approve(AgentAction &a, QString *note)
         return AgentController::Decision::Stop;
     }
     return AgentController::Decision::Reject;
+}
+
+static QStringList localFiles(const QMimeData *mime)
+{
+    QStringList out;
+    if (!mime || !mime->hasUrls())
+        return out;
+    for (const QUrl &u : mime->urls())
+        if (u.isLocalFile())
+            out << u.toLocalFile();
+    return out;
+}
+
+void MainWindow::dragEnterEvent(QDragEnterEvent *e)
+{
+    if (!localFiles(e->mimeData()).isEmpty())
+        e->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent *e)
+{
+    const QStringList files = localFiles(e->mimeData());
+    if (files.isEmpty())
+        return;
+    e->acceptProposedAction();
+    addFiles(files);
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_files->viewport() || watched == m_task->viewport()) {
+        if (event->type() == QEvent::DragEnter || event->type() == QEvent::DragMove) {
+            auto *e = static_cast<QDragMoveEvent *>(event);
+            if (!localFiles(e->mimeData()).isEmpty()) {
+                e->acceptProposedAction();
+                return true;
+            }
+        } else if (event->type() == QEvent::Drop) {
+            auto *e = static_cast<QDropEvent *>(event);
+            const QStringList files = localFiles(e->mimeData());
+            if (!files.isEmpty()) {
+                e->acceptProposedAction();
+                addFiles(files);
+                return true;
+            }
+        }
+    }
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::addFiles(const QStringList &paths)
+{
+    if (paths.isEmpty())
+        return;
+    // No project folder yet: use the folder of the first file.
+    if (!m_agent->workspace().isValid()) {
+        const QFileInfo first(paths.first());
+        setFolder(first.isDir() ? first.absoluteFilePath() : first.absolutePath());
+        appendLog(AgentController::LogKind::Info,
+                  tr("Project folder set to %1. Change it with \"Choose...\" if the project is a level up.")
+                      .arg(QDir::toNativeSeparators(m_agent->workspace().root())));
+    }
+    const QDir root(m_agent->workspace().root());
+    QStringList skipped;
+    int added = 0;
+    for (const QString &p : paths) {
+        const QFileInfo fi(p);
+        if (fi.isDir()) {
+            skipped << tr("%1 (a folder; pick the files inside it)").arg(fi.fileName());
+            continue;
+        }
+        const QString canon = fi.canonicalFilePath();
+        const QString rel = root.relativeFilePath(canon.isEmpty() ? fi.absoluteFilePath() : canon);
+        if (canon.isEmpty() || rel.startsWith(QLatin1String("..")) || QDir::isAbsolutePath(rel)) {
+            skipped << tr("%1 (outside the project folder)").arg(QDir::toNativeSeparators(p));
+            continue;
+        }
+        if (!m_files->findItems(rel, Qt::MatchExactly).isEmpty())
+            continue;
+        auto *item = new QListWidgetItem(rel, m_files);
+        item->setToolTip(QDir::toNativeSeparators(canon));
+        ++added;
+    }
+    if (!skipped.isEmpty())
+        appendLog(AgentController::LogKind::Error, tr("Not added: %1").arg(skipped.join(QStringLiteral("; "))));
+    if (added)
+        syncFocusFiles();
+}
+
+void MainWindow::syncFocusFiles()
+{
+    QStringList rels;
+    for (int i = 0; i < m_files->count(); ++i)
+        rels << m_files->item(i)->text();
+    m_agent->setFocusFiles(rels, m_onlyFiles->isChecked());
+    m_onlyFiles->setEnabled(!rels.isEmpty());
+    updateButtons();
 }

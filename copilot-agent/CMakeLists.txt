@@ -15,7 +15,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # Qt 5 only, 5.12 or newer (developed against 5.12.2).
-find_package(Qt5 5.12 REQUIRED COMPONENTS Core Gui Widgets Network WebSockets WebEngineCore WebEngineWidgets)
+find_package(Qt5 5.12 REQUIRED COMPONENTS Core Concurrent Gui Widgets Network WebSockets WebEngineCore WebEngineWidgets)
 message(STATUS "Building against Qt ${Qt5_VERSION}")
 
 if(WIN32)
@@ -42,6 +42,7 @@ add_library(agentcore STATIC
     src/agentaction.h
     src/agentprotocol.h      src/agentprotocol.cpp
     src/workspace.h          src/workspace.cpp
+    src/ignorerules.h        src/ignorerules.cpp
     src/linediff.h           src/linediff.cpp
     src/commandrunner.h      src/commandrunner.cpp
     src/agentcontroller.h    src/agentcontroller.cpp
@@ -49,7 +50,7 @@ add_library(agentcore STATIC
     src/bridge.qrc
 )
 target_include_directories(agentcore PUBLIC src)
-target_link_libraries(agentcore PUBLIC Qt5::Core)
+target_link_libraries(agentcore PUBLIC Qt5::Core Qt5::Concurrent)
 
 # Transports for the bridge: Qt's built-in WebEngine, and the user's own
 # Edge/Chrome over the DevTools protocol. In Qt 5, QWebEnginePage and

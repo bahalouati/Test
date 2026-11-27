@@ -240,6 +240,119 @@ private slots:
         QVERIFY(next.contains("I undid your last change to keep.txt"));
     }
 
+    void searchRunsWithoutApproval()
+    {
+        QFile f(m_dir.path() + "/code.cpp");
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("void needle() {}\n");
+        f.close();
+        AgentController *c = make(Decision::Reject);   // would reject anything it was asked about
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"search\",\"query\":\"needle\"}", "{\"action\":\"find_files\",\"pattern\":\"*.cpp\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());
+        const QString results = sent.last()[0].toString();
+        QVERIFY2(results.contains("code.cpp:1: void needle() {}"), qPrintable(results));
+        QVERIFY(results.contains("code.cpp  (17 bytes)"));
+    }
+
+    void stopDuringSearchDropsTheResult()
+    {
+        AgentController *c = make(Decision::Approve);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"search\",\"query\":\"x\"}"});
+        c->stop();
+        QTest::qWait(300);
+        QCOMPARE(sent.size(), 1);
+        QCOMPARE(c->state(), State::Idle);
+    }
+
+    void notesAreReadAndWritten()
+    {
+        QFile n(m_dir.path() + "/AGENT_NOTES.md");
+        QVERIFY(n.open(QIODevice::WriteOnly));
+        n.write("# Old notes\nBuild with make.\n");
+        n.close();
+        AgentController *c = make(Decision::Reject, /*autoLoop*/ false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QVERIFY(sent[0][0].toString().contains("Build with make."));
+        c->onReply({"{\"action\":\"update_notes\",\"content\":\"# New notes\"}"});
+        QVERIFY(waitFor(c, State::ResultsReady));
+        QVERIFY(m_asked.isEmpty());                    // no approval for notes
+        QVERIFY(n.open(QIODevice::ReadOnly));
+        QCOMPARE(n.readAll(), QByteArray("# New notes\n"));
+        n.close();
+        QString msg;
+        QVERIFY(c->canUndo());
+        QVERIFY(c->undoLast(&msg));                    // still undoable
+        QVERIFY(n.open(QIODevice::ReadOnly));
+        QVERIFY(n.readAll().startsWith("# Old notes"));
+    }
+
+    void pickedFilesGoInThePrompt()
+    {
+        QDir().mkpath(m_dir.path() + "/src");
+        QFile a(m_dir.path() + "/src/a.cpp");
+        QVERIFY(a.open(QIODevice::WriteOnly));
+        a.write("int alpha() { return 1; }\n");
+        a.close();
+        QFile big(m_dir.path() + "/big.txt");
+        QVERIFY(big.open(QIODevice::WriteOnly));
+        for (int i = 0; i < 2000; ++i)
+            big.write("filler line\n");
+        big.close();
+
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp", "big.txt"}, true);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("rename alpha");
+        const QString p = sent[0][0].toString();
+        QVERIFY(p.contains("- src/a.cpp (2 lines)"));
+        QVERIFY(p.contains("int alpha() { return 1; }"));                  // content included
+        QVERIFY(p.contains("big.txt (2001 lines), too long to include"));  // named, not pasted
+        QVERIFY(!p.contains("filler line"));
+        QVERIFY(p.contains("only they should be changed"));
+        QVERIFY(!p.contains("update the notes"));                           // notes off when restricted
+    }
+
+    void changesOutsidePickedFilesAreRefused()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp"}, true);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"other.cpp\",\"content\":\"x\"}",
+                    "{\"action\":\"write_file\",\"path\":\"./src/../src/a.cpp\",\"content\":\"y\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(m_asked.isEmpty());                               // refused without asking
+        QVERIFY(!QFile::exists(m_dir.path() + "/other.cpp"));
+        QVERIFY(!QFile::exists(m_dir.path() + "/src/a.cpp"));     // the rest of the step was skipped
+        QVERIFY(sent.last()[0].toString().contains("refused: only these files may be changed in this task: src/a.cpp"));
+
+        // The picked file itself, written as an odd but equivalent path: allowed, with approval.
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"./src/../src/a.cpp\",\"content\":\"y\"}",
+                    "{\"action\":\"update_notes\",\"content\":\"n\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QCOMPARE(m_asked.size(), 1);
+        QVERIFY(QFile::exists(m_dir.path() + "/src/a.cpp"));
+        QVERIFY(!QFile::exists(m_dir.path() + "/AGENT_NOTES.md"));  // notes refused too
+    }
+
+    void pickedFilesWithoutRestriction()
+    {
+        AgentController *c = make(Decision::Approve);
+        c->setFocusFiles({"src/a.cpp"}, false);
+        QSignalSpy sent(c, &AgentController::sendPrompt);
+        c->startTask("t");
+        QVERIFY(sent[0][0].toString().contains("as the place to start"));
+        c->onReply({"{\"action\":\"write_file\",\"path\":\"other.cpp\",\"content\":\"x\"}"});
+        QVERIFY(waitFor(c, State::WaitingForCopilot));
+        QVERIFY(QFile::exists(m_dir.path() + "/other.cpp"));
+    }
+
     void manualModeHoldsResults()
     {
         AgentController *c = make(Decision::Approve, /*autoLoop*/ false);

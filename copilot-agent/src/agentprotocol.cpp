@@ -8,8 +8,29 @@
 
 namespace AgentProtocol {
 
+QString focusSection(const QList<FocusFile> &files, bool onlyThese)
+{
+    if (files.isEmpty())
+        return QString();
+    QString out = onlyThese
+        ? QStringLiteral("For this task I've picked these files, and only they should be changed. Reading or searching "
+                         "other files is fine, but the app will refuse changes to any other file, so please plan "
+                         "the work within them:\n")
+        : QStringLiteral("For this task I've picked these files as the place to start:\n");
+    for (const FocusFile &f : files)
+        out += QStringLiteral("- %1 (%2 lines)%3\n").arg(f.path).arg(f.lines)
+                   .arg(f.included ? QString() : QStringLiteral(", too long to include here: read it in parts"));
+    for (const FocusFile &f : files) {
+        if (!f.included)
+            continue;
+        out += QStringLiteral("\nCurrent content of %1:\n").arg(f.path) + fence(f.content) + QLatin1Char('\n');
+    }
+    return out;
+}
+
 QString taskPrompt(const QString &task, const QString &workspaceName,
-                   const QString &platform, const QString &shell)
+                   const QString &platform, const QString &shell, const QString &notes,
+                   const QString &focus, bool notesAllowed)
 {
     // Written as an ordinary request from a person, not as a "system prompt":
     // no role assignment, no ALL-CAPS rules, no "never/ignore" wording, which
@@ -17,41 +38,77 @@ QString taskPrompt(const QString &task, const QString &workspaceName,
     //
     // Examples are inline code, not fenced blocks: the bridge only reads
     // fenced blocks, so our own message can never be mistaken for a reply.
+    QString notesPart;
+    if (!notesAllowed) {
+        notesPart = notes.trimmed().isEmpty()
+            ? QString()
+            : QStringLiteral("Here are the project notes from earlier conversations, for background (please don't "
+                             "update them this time):\n%1\n")
+                  .arg(fence(truncateMiddle(notes.trimmed(), 6000), QStringLiteral("markdown")));
+    } else if (notes.trimmed().isEmpty()) {
+        notesPart = QStringLiteral(
+            "There are no project notes yet. Before you finish, please write some with the notes step: a short "
+            "overview of the project (layout, how to build and test, conventions) and what this task changed, "
+            "so a later conversation can pick up from there.\n");
+    } else {
+        notesPart = QStringLiteral(
+            "Here are the project notes from earlier conversations (the file %1). They may be out of date, so "
+            "check anything important. Before you finish, please update them with the notes step, keeping what "
+            "is still true and adding what this task changed:\n%2\n")
+            .arg(QStringLiteral("AGENT_NOTES.md"), fence(truncateMiddle(notes.trimmed(), 6000), QStringLiteral("markdown")));
+    }
+
     return QStringLiteral(
         "Hi! I'd like your help with a programming task in a project on my computer.\n"
         "\n"
         "I use a small helper app that can carry out your suggestions for me: it can show you files, "
-        "save the changes you propose, and run commands, and then it pastes the results back here. "
-        "I review and approve every file change and every command before it happens.\n"
+        "search the project, save the changes you propose, and run commands, and then it pastes the results "
+        "back here. I review and approve every file change and every command before it happens.\n"
         "\n"
         "So the app can understand your suggestions, please put each step in its own code block with "
         "the language set to agent, containing one JSON object. These are the steps it understands "
         "(replace the <...> parts with real values):\n"
+        "- search the code: `{\"action\":\"search\",\"query\":\"<text>\",\"path\":\"<folder>\",\"glob\":\"<*.cpp>\"}` "
+        "(\"path\" and \"glob\" are optional; add \"regex\":true or \"case_sensitive\":true if needed)\n"
+        "- find files by name: `{\"action\":\"find_files\",\"pattern\":\"<*.h or src/**/name*>\"}`\n"
         "- list a folder: `{\"action\":\"list_dir\",\"path\":\"<folder>\",\"depth\":<levels>}`\n"
         "- show a file: `{\"action\":\"read_file\",\"path\":\"<file>\"}` (\"start_line\" and \"end_line\" are optional)\n"
-        "- save a whole file: `{\"action\":\"write_file\",\"path\":\"<file>\",\"content\":\"<the full file content>\"}`\n"
         "- change part of a file: `{\"action\":\"replace_in_file\",\"path\":\"<file>\",\"old\":\"<exact current text>\",\"new\":\"<new text>\"}`\n"
+        "- save a whole file: `{\"action\":\"write_file\",\"path\":\"<file>\",\"content\":\"<the full file content>\"}`\n"
         "- run a command: `{\"action\":\"run_command\",\"command\":\"<command>\",\"cwd\":\"<folder>\",\"timeout\":<seconds>}`\n"
+        "- update the project notes: `{\"action\":\"update_notes\",\"content\":\"<the full notes, in markdown>\"}`\n"
         "- finish: `{\"action\":\"done\",\"summary\":\"<what changed and how to check it>\"}`\n"
         "\n"
         "A few things that help:\n"
-        "- Paths are relative to the project folder, with forward slashes.\n"
+        "- Paths are relative to the project folder, with forward slashes. Files ignored by .gitignore and "
+        "build output are left out of listings and searches.\n"
+        "- The project may be large. Searching and finding files is quicker than listing everything; "
+        "list only a few levels at a time.\n"
+        "- For files longer than about 300 lines, please read the part you need with start_line and end_line "
+        "(search shows line numbers). A long file read in one go only shows its first 400 lines.\n"
+        "- To change an existing file, please use replace_in_file with a small, exact \"old\" text that appears "
+        "only once. Please keep write_file for new files and short ones: a long file rewritten in one reply "
+        "can get cut off.\n"
         "- The JSON needs to be valid, so newlines in strings are written as \\n and quotes as \\\".\n"
-        "- It works best to look at a file before changing it. For small edits, replace_in_file is easiest; "
-        "its \"old\" text should match the file exactly and appear only once. write_file replaces the whole file.\n"
         "- After a set of steps, please wait for me to paste the results before going on.\n"
         "- Please keep commands simple and safe: building, testing and inspecting are great. Please avoid "
         "deleting things, changing system settings or anything that needs administrator rights, and avoid "
         "commands that wait for input or keep running.\n"
         "- If you need a decision from me, just ask in plain text.\n"
-        "- When everything is done and checked, send the finish step.\n"
+        "%6"
         "\n"
         "About my setup: the project folder is %1, the operating system is %2, and commands run in %3.\n"
         "\n"
+        "%5"
+        "\n"
+        "%7"
         "Here is the task:\n%4\n"
         "\n"
         "Could you start by having a look at the project?")
-        .arg(workspaceName, platform, shell, task.trimmed());
+        .arg(workspaceName, platform, shell, task.trimmed(), notesPart,
+             notesAllowed ? QStringLiteral("- When everything is done and checked, update the notes, then send the finish step.\n")
+                          : QStringLiteral("- When everything is done and checked, send the finish step.\n"),
+             focus.isEmpty() ? QString() : focus + QLatin1Char('\n'));
 }
 
 static QString str(const QJsonObject &o, std::initializer_list<const char *> keys)
@@ -131,6 +188,26 @@ static AgentAction fromObject(const QJsonObject &o)
         a.timeoutSec = qMax(0, num(o, "timeout", 0));
         if (a.command.isEmpty())
             a.error = QStringLiteral("run_command needs \"command\"");
+    } else if (n == QLatin1String("search") || n == QLatin1String("grep") || n == QLatin1String("search_text")) {
+        a.type = AgentAction::Search;
+        a.query = str(o, {"query", "text", "pattern", "q"});
+        a.glob = str(o, {"glob", "include", "files"});
+        a.regex = o.value(QLatin1String("regex")).toBool(false);
+        a.caseSensitive = o.value(QLatin1String("case_sensitive")).toBool(false);
+        a.maxResults = qMax(0, num(o, "max_results", 0));
+        if (a.query.isEmpty())
+            a.error = QStringLiteral("search needs \"query\"");
+    } else if (n == QLatin1String("find_files") || n == QLatin1String("find") || n == QLatin1String("glob")) {
+        a.type = AgentAction::FindFiles;
+        a.glob = str(o, {"pattern", "glob", "name"});
+        a.maxResults = qMax(0, num(o, "max_results", 0));
+        if (a.glob.isEmpty())
+            a.error = QStringLiteral("find_files needs \"pattern\"");
+    } else if (n == QLatin1String("update_notes") || n == QLatin1String("notes") || n == QLatin1String("write_notes")) {
+        a.type = AgentAction::UpdateNotes;
+        a.content = str(o, {"content", "notes", "text"});
+        if (a.content.trimmed().isEmpty())
+            a.error = QStringLiteral("update_notes needs \"content\"");
     } else if (n == QLatin1String("done") || n == QLatin1String("finish") || n == QLatin1String("complete")) {
         a.type = AgentAction::Done;
         a.summary = str(o, {"summary", "message", "result"});
@@ -387,6 +464,10 @@ QString actionLabel(const AgentAction &a)
     switch (a.type) {
     case AgentAction::ReadFile:      return QStringLiteral("read_file %1").arg(a.path);
     case AgentAction::ListDir:       return QStringLiteral("list_dir %1").arg(a.path);
+    case AgentAction::Search:        return QStringLiteral("search \"%1\"%2").arg(a.query.left(60),
+                                         a.path.isEmpty() ? QString() : QStringLiteral(" in ") + a.path);
+    case AgentAction::FindFiles:     return QStringLiteral("find_files %1").arg(a.glob);
+    case AgentAction::UpdateNotes:   return QStringLiteral("update_notes");
     case AgentAction::WriteFile:     return QStringLiteral("write_file %1").arg(a.path);
     case AgentAction::ReplaceInFile: return QStringLiteral("replace_in_file %1").arg(a.path);
     case AgentAction::RunCommand:    return QStringLiteral("run_command `%1`").arg(a.command);
