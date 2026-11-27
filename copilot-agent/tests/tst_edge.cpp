@@ -5,6 +5,7 @@
 #include "edgesession.h"
 
 #include <QCoreApplication>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
 #include <QSignalSpy>
@@ -14,6 +15,16 @@
 #include <memory>
 #include <utility>
 #include <QtTest>
+
+static QJsonObject actionIn(const QStringList &blocks)
+{
+    for (const QString &b : blocks) {
+        const QJsonObject o = QJsonDocument::fromJson(b.toUtf8()).object();
+        if (o.contains(QStringLiteral("action")))
+            return o;
+    }
+    return QJsonObject();
+}
 
 class TestEdge : public QObject
 {
@@ -102,6 +113,8 @@ private slots:
         QTest::newRow("plain contenteditable") << "plain";
         QTest::newRow("textarea") << "textarea";
         QTest::newRow("strict (real Enter only)") << "strict";
+        QTest::newRow("m365 code card") << "m365";
+        QTest::newRow("unknown markup (text fallback)") << "unknown";
     }
 
     void roundTrip()
@@ -135,15 +148,30 @@ private slots:
 
         const QStringList blocks = reply[0][0].toStringList();
         QCOMPARE(blocks.size(), 2);
-        QVERIFY2(blocks[0].contains("\"action\":\"list_dir\"") && blocks[0].contains("reply-1-len-"),
-                 qPrintable(blocks[0]));
+        const QJsonObject o = actionIn(blocks);
+        QCOMPARE(o.value("action").toString(), QStringLiteral("list_dir"));
+        QVERIFY2(o.value("path").toString().startsWith("reply-1-len-"), qPrintable(blocks.join(" | ")));
         QCOMPARE(eval(QStringLiteral("window.mockSent.length")).toInt(), 1);
         QCOMPARE(eval(QStringLiteral("window.mockSent[0]")).toString().trimmed(), prompt.trimmed());
 
         bridge.sendPrompt(QStringLiteral("again"));
         QVERIFY(reply.wait(20000));
-        QVERIFY2(reply[1][0].toStringList().value(0).contains("reply-2-len-5"),
-                 qPrintable(reply[1][0].toStringList().join(" | ")));
+        QCOMPARE(actionIn(reply[1][0].toStringList()).value("path").toString(), QStringLiteral("reply-2-len-5"));
+    }
+
+    void describesThePage()
+    {
+        QVERIFY(openMock(QStringLiteral("m365")));
+        CopilotBridge bridge;
+        bridge.setScriptRunner([this](const QString &s, std::function<void(const QVariant &)> done) {
+            m_edge->evaluate(s, done);
+        });
+        auto text = std::make_shared<QString>();
+        bridge.describePage([text](const QString &t) { *text = t; });
+        QVERIFY(QTest::qWaitFor([&] { return !text->isEmpty(); }, 10000));
+        QVERIFY2(text->contains("input: ") && !text->contains("input: NOT FOUND"), qPrintable(*text));
+        QVERIFY(text->contains("send button: "));
+        QVERIFY(text->contains("blocks found: "));
     }
 
     void unsentPromptIsNotAReply()

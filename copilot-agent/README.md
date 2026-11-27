@@ -147,6 +147,14 @@ garbled and the Send button may be missing. It is kept for newer Qt 5 builds and
 
 ## When Microsoft changes the page
 
+If Copilot clearly answered with an action but the log says "Copilot replied without
+actions", press **Copy page details** in the toolbar. It copies a short outline of how the page
+holds the input box, buttons and the reply, so whoever maintains the app can adjust it. The
+outline includes the text of the last replies, so check it before sharing.
+
+The app looks for replies in code blocks, in Microsoft 365's "code cards" (line numbers are
+removed) and, failing those, for any `{"action": ...}` text in the reply.
+
 The app finds the input box, the send and stop buttons, and the reply code blocks through CSS
 selectors in [`src/bridge.js`](src/bridge.js). Each selector list falls back to generic ones
 (any visible `textarea` or `contenteditable`, buttons labelled "Send" or "Stop", `<pre>`

@@ -15,6 +15,17 @@
 #include <QKeyEvent>
 #include <QtTest>
 
+// The block that is an action, whichever position the page put it in.
+static QJsonObject actionIn(const QStringList &blocks)
+{
+    for (const QString &b : blocks) {
+        const QJsonObject o = QJsonDocument::fromJson(b.toUtf8()).object();
+        if (o.contains(QStringLiteral("action")))
+            return o;
+    }
+    return QJsonObject();
+}
+
 class TestBridge : public QObject
 {
     Q_OBJECT
@@ -44,6 +55,8 @@ private slots:
         QTest::newRow("plain contenteditable") << "plain";
         QTest::newRow("textarea") << "textarea";
         QTest::newRow("strict (real Enter only)") << "strict";
+        QTest::newRow("m365 code card") << "m365";
+        QTest::newRow("unknown markup (text fallback)") << "unknown";
     }
 
     void roundTrip()
@@ -85,9 +98,9 @@ private slots:
 
         const QStringList blocks = reply[0][0].toStringList();
         QCOMPARE(blocks.size(), 2);   // the agent block and the ordinary one; the parser drops the latter
-        const QJsonObject o = QJsonDocument::fromJson(blocks[0].toUtf8()).object();
+        const QJsonObject o = actionIn(blocks);
         QCOMPARE(o.value("action").toString(), QStringLiteral("list_dir"));
-        QVERIFY2(o.value("path").toString().startsWith("reply-1-len-"), qPrintable(blocks[0]));
+        QVERIFY2(o.value("path").toString().startsWith("reply-1-len-"), qPrintable(blocks.join(" | ")));
 
         // The page received the prompt intact (modulo trailing whitespace).
         const QString got = js(page, "window.mockSent[0]").toString();
@@ -98,7 +111,7 @@ private slots:
         QVERIFY(reply.wait(20000));
         const QStringList second = reply[1][0].toStringList();
         QCOMPARE(second.size(), 2);
-        QVERIFY2(second[0].contains("reply-2-len-5"), qPrintable(second.join(" | ")));
+        QCOMPARE(actionIn(second).value("path").toString(), QStringLiteral("reply-2-len-5"));
 
         // Reading again finds nothing that was not already handed over.
         bridge.readNow();

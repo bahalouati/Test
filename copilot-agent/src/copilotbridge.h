@@ -53,6 +53,11 @@ public slots:
     // pasted the prompt by hand.
     void readNow();
     void cancel();
+public:
+    // A text outline of how the page holds the input box, buttons and
+    // anything that looks like an action, for diagnosing missed replies.
+    void describePage(std::function<void(const QString &)> done);
+public slots:
 
 signals:
     void sent();
