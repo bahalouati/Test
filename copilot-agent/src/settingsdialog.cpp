@@ -2,6 +2,9 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QMessageBox>
+
+#include "copilotservice.h"
 #include <QDialogButtonBox>
 #include <QFontDatabase>
 #include <QFormLayout>
@@ -79,12 +82,19 @@ SettingsDialog::SettingsDialog(const AppSettings &s, QWidget *parent)
     auto *lay = new QVBoxLayout(this);
     auto *form = new QFormLayout;
 
+    m_service = new QComboBox(this);
+    m_service->addItem(tr("Microsoft 365 Copilot (work account, protected)"), int(CopilotService::Work));
+    m_service->addItem(tr("Copilot (personal Microsoft account)"), int(CopilotService::Personal));
+    m_service->addItem(tr("Other address"), int(CopilotService::Custom));
+    m_service->setCurrentIndex(qMax(0, m_service->findData(int(CopilotService::kindOfUrl(s.url)))));
+    m_lastService = m_service->currentIndex();
+    form->addRow(tr("Copilot:"), m_service);
     m_url = new QLineEdit(s.url, this);
-    form->addRow(tr("Copilot URL:"), m_url);
-    auto *hint = new QLabel(tr("The default is Microsoft 365 Copilot Chat, which applies your organisation's "
-                               "enterprise data protection. Sign in with your work account."), this);
-    hint->setWordWrap(true);
-    form->addRow(QString(), hint);
+    form->addRow(tr("Address:"), m_url);
+    m_serviceHint = new QLabel(this);
+    m_serviceHint->setWordWrap(true);
+    form->addRow(QString(), m_serviceHint);
+    connect(m_service, qOverload<int>(&QComboBox::currentIndexChanged), this, &SettingsDialog::serviceChanged);
 
     m_mode = new QComboBox(this);
     m_mode->addItem(tr("Microsoft Edge, automatic (recommended)"), QStringLiteral("edge"));
@@ -135,6 +145,59 @@ SettingsDialog::SettingsDialog(const AppSettings &s, QWidget *parent)
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(m_selectors, &QPlainTextEdit::textChanged, this, &SettingsDialog::validate);
     validate();
+    serviceChanged();
+}
+
+void SettingsDialog::serviceChanged()
+{
+    const auto kind = CopilotService::Kind(m_service->currentData().toInt());
+    // Switching to the personal service: say plainly what that means, and
+    // only switch if the user confirms.
+    if (kind == CopilotService::Personal && m_lastService != m_service->currentIndex()) {
+        QMessageBox box(QMessageBox::Warning, tr("Personal Copilot"),
+                        tr("Personal Copilot is a consumer service, not your company's Microsoft 365 Copilot."),
+                        QMessageBox::NoButton, this);
+        box.setInformativeText(tr(
+            "It is not covered by your organisation's enterprise data protection. Everything the agent sends "
+            "(your task, the contents of files it reads, command output) goes to Microsoft under the consumer "
+            "terms, where it may be stored and reviewed, and used to improve the service depending on your "
+            "privacy settings.\n\n"
+            "Do not use it for company code, customer data or anything confidential unless your company allows "
+            "it. It signs in with a personal Microsoft account, in an Edge profile of its own."));
+        auto *use = box.addButton(tr("Use personal Copilot"), QMessageBox::AcceptRole);
+        box.addButton(QMessageBox::Cancel);
+        box.setDefaultButton(QMessageBox::Cancel);
+        box.exec();
+        if (box.clickedButton() != use) {
+            const QSignalBlocker block(m_service);
+            m_service->setCurrentIndex(m_lastService);
+            return;
+        }
+    }
+    m_lastService = m_service->currentIndex();
+    const auto now = CopilotService::Kind(m_service->currentData().toInt());
+    if (now != CopilotService::Custom) {
+        m_url->setText(CopilotService::defaultUrl(now));
+        m_url->setReadOnly(true);
+    } else {
+        m_url->setReadOnly(false);
+    }
+    switch (now) {
+    case CopilotService::Work:
+        m_serviceHint->setStyleSheet(QString());
+        m_serviceHint->setText(tr("Microsoft 365 Copilot Chat, with your organisation's enterprise data protection. "
+                                  "Sign in with your work account."));
+        break;
+    case CopilotService::Personal:
+        m_serviceHint->setStyleSheet(QStringLiteral("color: #9a6700"));
+        m_serviceHint->setText(tr("Personal Copilot: no enterprise data protection. Keep confidential code and data "
+                                  "out of it. Sign in with a personal Microsoft account."));
+        break;
+    case CopilotService::Custom:
+        m_serviceHint->setStyleSheet(QString());
+        m_serviceHint->setText(tr("Any other Copilot chat address. Check its data protection yourself."));
+        break;
+    }
 }
 
 void SettingsDialog::validate()

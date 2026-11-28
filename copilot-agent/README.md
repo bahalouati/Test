@@ -206,6 +206,21 @@ On other Windows setups and on macOS, install Qt with the online installer and t
 point CMake at it with `-DCMAKE_PREFIX_PATH=C:/Qt/6.x.x/msvc2019_64`. On Windows, run
 `windeployqt` on the built exe.
 
+## Which Copilot (Settings → "Copilot")
+
+- **Microsoft 365 Copilot** (default): `m365.cloud.microsoft`, with your work account and your
+  organisation's enterprise data protection.
+- **Copilot, personal Microsoft account**: `copilot.com`. Choosing it shows a warning first: it is
+  a consumer service, not covered by enterprise data protection, and everything the agent sends
+  (task, file contents, command output) goes to Microsoft under the consumer terms. Keep company
+  code and confidential data out of it unless your company allows it. While it is selected, a
+  yellow banner stays at the top of the window.
+- **Other address**: any other Copilot chat URL.
+
+Work and personal Copilot each get their own Edge profile, so the two accounts never share a
+window or sign-in. The app also never treats a work Copilot tab as the personal one, or the
+other way round.
+
 ## Where Copilot runs (Settings → "Copilot runs in")
 
 **Microsoft Edge, automatic** (default): the app opens Copilot in an Edge window of its own,

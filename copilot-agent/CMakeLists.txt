@@ -45,6 +45,7 @@ add_library(agentcore STATIC
     src/ignorerules.h        src/ignorerules.cpp
     src/officefile.h         src/officefile.cpp
     src/git.h                src/git.cpp
+    src/copilotservice.h     src/copilotservice.cpp
     src/jiraissue.h          src/jiraissue.cpp
     src/linediff.h           src/linediff.cpp
     src/commandrunner.h      src/commandrunner.cpp
@@ -71,7 +72,7 @@ add_library(agentedge STATIC
     src/jiraconnection.h     src/jiraconnection.cpp
 )
 target_include_directories(agentedge PUBLIC src)
-target_link_libraries(agentedge PUBLIC Qt5::Core Qt5::Network Qt5::WebSockets)
+target_link_libraries(agentedge PUBLIC agentcore Qt5::Core Qt5::Network Qt5::WebSockets)
 
 add_executable(copilot-agent WIN32 MACOSX_BUNDLE
     src/main.cpp
@@ -92,7 +93,7 @@ if(COPILOTAGENT_BUILD_TESTS)
     enable_testing()
     find_package(Qt5 REQUIRED COMPONENTS Test)
 
-    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller tst_office tst_git)
+    foreach(name tst_agentprotocol tst_workspace tst_linediff tst_agentcontroller tst_office tst_git tst_services)
         add_executable(${name} tests/${name}.cpp)
         target_link_libraries(${name} PRIVATE agentcore Qt5::Test)
         add_test(NAME ${name} COMMAND ${name})

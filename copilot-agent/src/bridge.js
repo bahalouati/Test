@@ -11,6 +11,8 @@ var __copilotAgent = (function () {
   var defaults = {
     input: [
       '#m365-chat-editor-target-element',
+      '#userInput',                              // copilot.com (personal)
+      'textarea[data-testid="composer-input"]',
       '[data-lexical-editor="true"][contenteditable="true"]',
       'textarea[aria-label*="message" i]',
       'textarea[placeholder*="message" i]',
