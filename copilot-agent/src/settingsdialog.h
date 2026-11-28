@@ -45,6 +45,10 @@ private:
 
     AppSettings m_s;
     QLineEdit *m_url;
+    QComboBox *m_service;
+    QLabel *m_serviceHint;
+    int m_lastService = 0;
+    void serviceChanged();
     QComboBox *m_mode;
     QLineEdit *m_browserPath;
     QSpinBox *m_maxSteps;

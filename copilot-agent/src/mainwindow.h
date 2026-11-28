@@ -88,6 +88,7 @@ private:
     QSplitter *m_split = nullptr;
     QAction *m_openEdge = nullptr;
     QAction *m_describe = nullptr;
+    QLabel *m_personalBanner = nullptr;
 
     QWebEngineView *m_view = nullptr;
     QLineEdit *m_address = nullptr;

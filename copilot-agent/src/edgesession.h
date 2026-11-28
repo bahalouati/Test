@@ -32,6 +32,7 @@ public:
 
     void setBrowserPath(const QString &path) { m_browserPath = path; }   // empty: find Edge, then Chrome
     void setProfileDir(const QString &dir) { m_profileDir = dir; }
+    QString profileDir() const { return m_profileDir; }
     void setStartUrl(const QString &url) { m_startUrl = QUrl(url); }
     void setExtraArguments(const QStringList &args) { m_extraArgs = args; }
 

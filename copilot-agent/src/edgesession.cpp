@@ -1,5 +1,7 @@
 #include "edgesession.h"
 
+#include "copilotservice.h"
+
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -21,25 +23,6 @@ const int kHttpTimeoutMs = 3000;
 const int kLaunchWaitSteps = 180;     // x 500 ms: a first start on a slow or managed PC can take a while
 const int kCallTimeoutMs = 30000;
 const int kHealthTimeoutMs = 5000;
-
-// Copilot moves between addresses (m365.cloud.microsoft redirects to
-// copilot.cloud.microsoft, and so on); any of them is "the Copilot tab".
-bool sameService(const QString &host, const QString &startHost)
-{
-    if (host.isEmpty() || startHost.isEmpty())
-        return false;
-    if (host == startHost)
-        return true;
-    static const QStringList copilotHosts = {
-        QStringLiteral("m365.cloud.microsoft"), QStringLiteral("copilot.cloud.microsoft"),
-        QStringLiteral("copilot.microsoft.com"), QStringLiteral("www.microsoft365.com"),
-        QStringLiteral("microsoft365.com"), QStringLiteral("www.office.com"),
-    };
-    auto isCopilot = [](const QString &h) {
-        return copilotHosts.contains(h) || h.endsWith(QLatin1String(".cloud.microsoft"));
-    };
-    return isCopilot(host) && isCopilot(startHost);
-}
 
 QString portFile(const QString &profileDir)
 {
@@ -286,8 +269,9 @@ void EdgeSession::attach(int port)
             if (t.value(QStringLiteral("type")).toString() != QLatin1String("page"))
                 continue;
             const QUrl u(t.value(QStringLiteral("url")).toString());
-            const bool copilot = sameService(u.host(), host);
-            const bool signIn = self->m_launched && u.host().contains(QLatin1String("login.microsoftonline"));
+            const bool copilot = CopilotService::sameService(u.host(), host);
+            const bool signIn = self->m_launched
+                && CopilotService::isSignInHost(u.host(), CopilotService::kindOfHost(host));
             if (copilot || signIn) {
                 best = t;
                 if (copilot)

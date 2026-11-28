@@ -5,6 +5,7 @@
 #include "copilotbridge.h"
 #include "linediff.h"
 #include "officefile.h"
+#include "copilotservice.h"
 #include "edgesession.h"
 #include "jiraissue.h"
 #include "jiraconnection.h"
@@ -126,8 +127,7 @@ void MainWindow::buildUi()
     m_view->setPage(new WebPage(profile, m_view));
     m_bridge = new CopilotBridge(this);
     m_edge = new EdgeSession(this);
-    m_edge->setProfileDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
-                          + QStringLiteral("/edge-profile"));
+    // The profile folder follows the chosen Copilot (applySettings).
     // Set up for the built-in page; useTransportForMode() switches to Edge.
     attachWebEnginePage(m_bridge, m_view->page());
     // A real Enter through the widget that hosts the page: Chromium treats
@@ -194,6 +194,14 @@ void MainWindow::buildUi()
 
     auto *panel = new QWidget(this);
     auto *pl = new QVBoxLayout(panel);
+    // Always visible while personal Copilot is selected.
+    m_personalBanner = new QLabel(tr("Personal Copilot: not covered by enterprise data protection. "
+                                     "Keep confidential code and data out of it."), panel);
+    m_personalBanner->setWordWrap(true);
+    m_personalBanner->setStyleSheet(QStringLiteral(
+        "QLabel { background: #fff8c5; color: #4d2d00; border: 1px solid #d4a72c; border-radius: 4px; padding: 6px; }"));
+    m_personalBanner->setVisible(false);
+    pl->addWidget(m_personalBanner);
 
     auto *folderBox = new QGroupBox(tr("Project folder"), panel);
     auto *fl = new QHBoxLayout(folderBox);
@@ -529,6 +537,18 @@ void MainWindow::wire()
 
 void MainWindow::applySettings()
 {
+    // Work and personal Copilot each have their own Edge profile, so their
+    // accounts never mix. Switching services drops the connection to the
+    // other one's Edge window.
+    const CopilotService::Kind service = CopilotService::kindOfUrl(m_settings.url);
+    const QString profile = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation)
+                          + QLatin1Char('/') + CopilotService::profileFolder(service);
+    if (m_edge->profileDir() != profile) {
+        if (m_edge->isConnected())
+            m_edge->disconnectFromBrowser();
+        m_edge->setProfileDir(profile);
+    }
+    m_personalBanner->setVisible(service == CopilotService::Personal);
     AgentController::Options o;
     o.autoLoop = m_settings.autoLoop;
     o.maxSteps = m_settings.maxSteps;
